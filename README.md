@@ -76,11 +76,12 @@ Public preview product boundaries:
 
 | Kind | Role |
 |---|---|
-| `Fleet` | Fleet setup root: source, delivery defaults, clusters, and embedded stage plan. |
-| `Source` | Reusable catalog of deployable units and substrate write targets. |
+| `DeliveryUnit` | App/workload source mappings, trigger intent, and default fleet/plan. |
+| `Fleet` | Target set: clusters and delivery defaults. |
+| `Source` | Controller-derived source mapping object from a DeliveryUnit. |
 | `Substrate` | Delivery driver configuration for Flux, Argo CD, OCI, direct apply, or plugin-backed execution. |
-| `Plan` | Stage order, target selection, and gates generated from or referenced by a Fleet. |
-| `Promotion` | User-authored rollout intent: "promote this version through this Fleet." |
+| `Plan` | Stage order, target selection, and gates. |
+| `Promotion` | Explicit rollout action: "promote this DeliveryUnit version through this Fleet." |
 | `PromotionRun` | Controller-authored execution attempt and audit record. |
 | `Target` | Per-cluster, per-stage runtime state. |
 | `Cluster` | A workload cluster known to the hub. |
@@ -155,16 +156,19 @@ kubectl wait crd/promotions.kapro.io crd/promotionruns.runtime.kapro.io crd/targ
   --timeout=60s
 kubectl -n kapro-system rollout status deployment/kapro-kapro-operator
 kubectl apply -f examples/quickstart/substrates/flux.yaml
+kubectl apply -f examples/quickstart/deliveryunit.yaml
+kubectl apply -f examples/quickstart/plan.yaml
 kubectl apply -f examples/quickstart/kapro.yaml
 kubectl apply -f examples/quickstart/promotion.yaml
 kubectl get promotions.kapro.io,promotionruns.runtime.kapro.io,targets.runtime.kapro.io
 ```
 
-The user-authored object is `Promotion`. `PromotionRun` and `Target` are
-controller-owned runtime records for inspection in `kubectl` or k9s. This
-starter path proves that the hub API stamps `PromotionRun` and `Target`
-records. Real `Complete` / `Converged` status requires a wired delivery substrate
-or the local CI smoke fixture to report workload health.
+The setup objects are `DeliveryUnit`, `Fleet`, and `Plan`; `Promotion` is the
+explicit rollout action. `PromotionRun` and `Target` are controller-owned
+runtime records for inspection in `kubectl` or k9s. This starter path proves
+that the hub API stamps `PromotionRun` and `Target` records. Real `Complete` /
+`Converged` status requires a wired delivery substrate or the local CI smoke
+fixture to report workload health.
 
 To run the same local convergence smoke used by CI, use Docker, Kind, Helm, and
 kubectl:

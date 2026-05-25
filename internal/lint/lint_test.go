@@ -29,7 +29,7 @@ func TestLintPromotion_RejectsMissingRequired(t *testing.T) {
 	p := &kaprov1alpha1.Promotion{}
 	issues := LintPromotion(p)
 
-	for _, want := range []string{"metadata.name", "fleetRef", "version"} {
+	for _, want := range []string{"metadata.name", "fleetRef", "deliveryUnitRef", "version"} {
 		hit := findIssue(t, issues, want)
 		if hit == nil {
 			t.Errorf("missing expected issue for %q; got %+v", want, issues)
@@ -41,10 +41,74 @@ func TestLintPromotion_RejectsMissingRequired(t *testing.T) {
 	}
 }
 
+func TestLintDeliveryUnit_RejectsInvalidSourceAndTriggers(t *testing.T) {
+	du := &kaprov1alpha1.DeliveryUnit{
+		Spec: kaprov1alpha1.DeliveryUnitSpec{
+			Source: kaprov1alpha1.SourceSpec{
+				Units: []kaprov1alpha1.Unit{
+					{Name: "api"},
+					{Name: "api"},
+					{},
+				},
+			},
+			Triggers: []kaprov1alpha1.DeliveryUnitTrigger{
+				{
+					Source: kaprov1alpha1.TriggerSource{Type: "oci"},
+				},
+				{
+					Source: kaprov1alpha1.TriggerSource{Type: "git"},
+				},
+			},
+		},
+	}
+	issues := LintDeliveryUnit(du)
+
+	for _, want := range []string{
+		"metadata.name",
+		"duplicate unit",
+		"unit name",
+		"trigger requires fleetRef",
+		"source.oci",
+		"duplicate derived Trigger suffix",
+		"unsupported trigger source type",
+	} {
+		hit := findIssue(t, issues, want)
+		if hit == nil {
+			t.Errorf("missing expected DeliveryUnit issue for %q; got %+v", want, issues)
+			continue
+		}
+		if hit.Severity != SeverityError {
+			t.Errorf("issue %q should be ERROR, got %s", want, hit.Severity)
+		}
+	}
+}
+
+func TestLintFile_DeliveryUnitDispatch(t *testing.T) {
+	issues := LintFile("du.yaml", []byte(`apiVersion: kapro.io/v1alpha1
+kind: DeliveryUnit
+metadata:
+  name: checkout
+spec:
+  source:
+    units:
+      - name: api
+  defaultFleetRef: checkout
+  triggers:
+    - source:
+        type: oci
+        oci:
+          repository: ghcr.io/example/checkout
+          tagPattern: '^v'
+`))
+	if len(issues) != 0 {
+		t.Fatalf("expected valid DeliveryUnit, got %+v", issues)
+	}
+}
+
 func TestLintPromotion_WarnsOnNoTimeout(t *testing.T) {
 	p := &kaprov1alpha1.Promotion{
 		ObjectMeta: metav1.ObjectMeta{Name: "p1"},
-		Spec:       kaprov1alpha1.PromotionSpec{FleetRef: "k", Version: "v1"},
+		Spec:       kaprov1alpha1.PromotionSpec{DeliveryUnitRef: "du", FleetRef: "k", Version: "v1"},
 	}
 	issues := LintPromotion(p)
 	hit := findIssue(t, issues, "timeout")
@@ -60,9 +124,10 @@ func TestLintPromotion_DuplicateScopeTargetsWarn(t *testing.T) {
 	p := &kaprov1alpha1.Promotion{
 		ObjectMeta: metav1.ObjectMeta{Name: "p1"},
 		Spec: kaprov1alpha1.PromotionSpec{
-			FleetRef: "k",
-			Version:  "v1",
-			Timeout:  "30m",
+			FleetRef:        "k",
+			DeliveryUnitRef: "du",
+			Version:         "v1",
+			Timeout:         "30m",
 			Scope: &kaprov1alpha1.PromotionRunScope{
 				Targets: []string{"de-prod", "de-prod"},
 			},
@@ -181,6 +246,7 @@ kind: Promotion
 metadata:
   name: a
 spec:
+  deliveryUnitRef: du
   fleetRef: k
   version: v1
   timeout: 30m
@@ -190,6 +256,7 @@ kind: Promotion
 metadata:
   name: b
 spec:
+  deliveryUnitRef: du
   fleetRef: k
   # missing version
 `))
@@ -287,7 +354,7 @@ func TestQuickstartYAMLIsStrictLintClean(t *testing.T) {
 // ---- LintKapro -------------------------------------------------------------
 
 func TestLintKapro_NilSourceDoesNotPanic(t *testing.T) {
-	// Regression guard. KaproSpec.Source is *PromotionSourceSpec and is
+	// Regression guard. FleetSpec.Source is *SourceSpec and is
 	// nil whenever the user does not declare an inline source — i.e.
 	// every Kapro that uses sourceRef. An earlier version of LintKapro
 	// dereferenced k.Spec.Source.Units unconditionally and panicked.
@@ -295,7 +362,7 @@ func TestLintKapro_NilSourceDoesNotPanic(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "k1"},
 		Spec: kaprov1alpha1.FleetSpec{
 			SourceRef: "shared-catalog",
-			Delivery:  kaprov1alpha1.DeliverySpec{SubstrateRef: "flux"},
+			Substrate: kaprov1alpha1.SubstrateBindingSpec{SubstrateRef: "flux"},
 			Clusters:  []kaprov1alpha1.ClusterRef{{Name: "c1"}},
 		},
 	}
@@ -312,14 +379,14 @@ func TestLintKapro_NilSourceDoesNotPanic(t *testing.T) {
 	}
 }
 
-func TestLintKapro_ExactlyOneOfSourceSourceRef(t *testing.T) {
+func TestLintKapro_SourceAndSourceRefCompatibility(t *testing.T) {
 	cases := []struct {
 		name      string
 		sourceRef string
 		source    *kaprov1alpha1.SourceSpec
 		wantErr   bool
 	}{
-		{name: "both unset", wantErr: true},
+		{name: "target-set fleet without legacy source"},
 		{name: "only sourceRef", sourceRef: "shared"},
 		{
 			name:   "only inline source",
@@ -334,8 +401,6 @@ func TestLintKapro_ExactlyOneOfSourceSourceRef(t *testing.T) {
 		{
 			name:   "source non-nil but empty units",
 			source: &kaprov1alpha1.SourceSpec{},
-			// No sourceRef, no actual units → still "neither set".
-			wantErr: true,
 		},
 	}
 	for _, tc := range cases {
@@ -345,7 +410,7 @@ func TestLintKapro_ExactlyOneOfSourceSourceRef(t *testing.T) {
 				Spec: kaprov1alpha1.FleetSpec{
 					SourceRef: tc.sourceRef,
 					Source:    tc.source,
-					Delivery:  kaprov1alpha1.DeliverySpec{SubstrateRef: "flux"},
+					Substrate: kaprov1alpha1.SubstrateBindingSpec{SubstrateRef: "flux"},
 					Clusters:  []kaprov1alpha1.ClusterRef{{Name: "c1"}},
 				},
 			}
@@ -382,7 +447,7 @@ func TestLintKapro_NoClustersWarn(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "k1"},
 		Spec: kaprov1alpha1.FleetSpec{
 			SourceRef: "shared",
-			Delivery:  kaprov1alpha1.DeliverySpec{SubstrateRef: "flux"},
+			Substrate: kaprov1alpha1.SubstrateBindingSpec{SubstrateRef: "flux"},
 		},
 	}
 	issues := LintKapro(k)
@@ -455,6 +520,7 @@ kind: Promotion
 metadata:
   name: ok
 spec:
+  deliveryUnitRef: du
   fleetRef: k
   version: v1
   timeout: 30m

@@ -274,7 +274,7 @@ func TestServerNewUsesCustomActuatorRegistrars(t *testing.T) {
 					SubstrateKind:  kaprov1alpha1.SubstrateKindExternal,
 					Actuator:       "external",
 					ExecutionScope: kaprov1alpha1.ExecutionScopeHub,
-					Modes:          []kaprov1alpha1.DeliveryMode{kaprov1alpha1.DeliveryModePush},
+					Modes:          []kaprov1alpha1.SubstrateMode{kaprov1alpha1.SubstrateModePush},
 					SupportsApply:  true,
 				},
 				Actuator: stubActuator{},

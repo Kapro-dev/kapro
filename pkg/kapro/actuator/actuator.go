@@ -51,7 +51,7 @@ type Capabilities struct {
 	Actuator        string
 	ExecutionScope  kaprov1alpha1.ExecutionScope
 	ExecutionModes  []kaprov1alpha1.ExecutionMode
-	Modes           []kaprov1alpha1.DeliveryMode
+	Modes           []kaprov1alpha1.SubstrateMode
 
 	SupportsApply            bool
 	SupportsObserve          bool
@@ -93,7 +93,7 @@ func (c Capabilities) Normalize() Capabilities {
 // SupportsMode reports whether the capabilities include the given delivery
 // mode. An empty mode list means the registration did not publish mode
 // metadata.
-func (c Capabilities) SupportsMode(mode kaprov1alpha1.DeliveryMode) bool {
+func (c Capabilities) SupportsMode(mode kaprov1alpha1.SubstrateMode) bool {
 	for _, candidate := range c.Modes {
 		if candidate == mode {
 			return true

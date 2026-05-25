@@ -366,7 +366,7 @@ discover_and_promote() {
 
   "${TMPDIR}/bin/kapro" source apply \
     --repo "${repo}" \
-    --source "${out}/sources/flux-e2e.yaml" \
+    --source "${out}/deliveryunits/flux-e2e.yaml" \
     --set checkout=v2
 
   git -C "${repo}" remote add e2e "git://127.0.0.1:${GIT_PORT}/repo.git"

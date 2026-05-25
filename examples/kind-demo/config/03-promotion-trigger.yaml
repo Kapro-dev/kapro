@@ -2,6 +2,8 @@ apiVersion: kapro.io/v1alpha1
 kind: Trigger
 metadata:
   name: checkout-kind-trigger
+  labels:
+    kapro.io/team: checkout
 spec:
   suspended: true
   source:
@@ -12,6 +14,7 @@ spec:
       requireSignature: false
       pollInterval: 1m
   promotionTemplate:
+    deliveryUnitRef: checkout
     fleetRef: checkout
     nameTemplate: "checkout-kind"
     plans:
@@ -20,6 +23,7 @@ spec:
     suspended: false
     timeout: 30m
     labels:
+      kapro.io/team: checkout
       kapro.io/demo: kind
   cooldown: 1m
   maxActive: 1

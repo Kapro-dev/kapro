@@ -11,16 +11,17 @@ func TestRunSourceApplyUpdatesGitJSONFieldWithInclude(t *testing.T) {
 	repo := t.TempDir()
 	writeTestFile(t, repo, "argocd/environments/dev.json", `{"env":"dev","gkProjectVersion":"1.0.0"}`)
 	writeTestFile(t, repo, "argocd/environments/prod.json", `{"env":"prod","gkProjectVersion":"1.0.0"}`)
-	sourcePath := filepath.Join(repo, "sources/checkout.yaml")
-	writeTestFile(t, repo, "sources/checkout.yaml", `apiVersion: kapro.io/v1alpha1
-kind: Source
+	sourcePath := filepath.Join(repo, "deliveryunits/checkout.yaml")
+	writeTestFile(t, repo, "deliveryunits/checkout.yaml", `apiVersion: kapro.io/v1alpha1
+kind: DeliveryUnit
 metadata:
   name: checkout
 spec:
-  units:
-  - name: checkout-api
-    substrateKind: GitJSONField
-    versionField: argocd/environments/*.json:gkProjectVersion
+  source:
+    units:
+    - name: checkout-api
+      substrateKind: GitJSONField
+      versionField: argocd/environments/*.json:gkProjectVersion
 `)
 	initTestGitRepo(t, repo)
 

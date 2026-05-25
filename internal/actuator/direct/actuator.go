@@ -194,7 +194,7 @@ func directNamespace(cluster *kaprov1alpha1.Cluster) string {
 	if cluster == nil {
 		return "default"
 	}
-	return cluster.Spec.Delivery.Param("namespace", "default")
+	return cluster.Spec.Substrate.Param("namespace", "default")
 }
 
 func directDeploymentName(cluster *kaprov1alpha1.Cluster, appKey string) string {
@@ -203,14 +203,14 @@ func directDeploymentName(cluster *kaprov1alpha1.Cluster, appKey string) string 
 		return appKey
 	}
 	if appKey != "default" {
-		if name := cluster.Spec.Delivery.Param("deployment."+appKey, ""); name != "" {
+		if name := cluster.Spec.Substrate.Param("deployment."+appKey, ""); name != "" {
 			return name
 		}
 	}
-	if name := cluster.Spec.Delivery.Param("deployment", ""); name != "" {
+	if name := cluster.Spec.Substrate.Param("deployment", ""); name != "" {
 		return name
 	}
-	if manifestPath := cluster.Spec.Delivery.Param("manifestPath", ""); manifestPath != "" {
+	if manifestPath := cluster.Spec.Substrate.Param("manifestPath", ""); manifestPath != "" {
 		if base := path.Base(manifestPath); base != "." && base != "/" {
 			return base
 		}
@@ -224,12 +224,12 @@ func directDeploymentName(cluster *kaprov1alpha1.Cluster, appKey string) string 
 func directContainerName(cluster *kaprov1alpha1.Cluster, appKey string) string {
 	appKey = normalizeAppKey(appKey)
 	if cluster != nil && appKey != "default" {
-		if name := cluster.Spec.Delivery.Param("container."+appKey, ""); name != "" {
+		if name := cluster.Spec.Substrate.Param("container."+appKey, ""); name != "" {
 			return name
 		}
 	}
 	if cluster != nil {
-		if name := cluster.Spec.Delivery.Param("container", ""); name != "" {
+		if name := cluster.Spec.Substrate.Param("container", ""); name != "" {
 			return name
 		}
 	}

@@ -28,7 +28,7 @@ helm upgrade --install kapro charts/kapro-operator \
   --namespace kapro-system \
   --create-namespace \
   --set hubAPIURL=https://hub.example.com:6443 \
-  --set controllers='{fleet,plan,promotion,promotionrun,cluster,cluster-bootstrap}'
+  --set controllers='{deliveryunit,fleet,plan,promotion,promotionrun,cluster,cluster-bootstrap}'
 ```
 
 ## Step 1 — Generate values + bootstrap Secret on the hub

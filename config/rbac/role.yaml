@@ -159,6 +159,8 @@ rules:
   - fleets
   - plans
   - promotions
+  - sources
+  - triggers
   verbs:
   - create
   - delete
@@ -173,6 +175,7 @@ rules:
   - approvals/status
   - clusters/status
   - clustertemplates/status
+  - deliveryunits/status
   - fleets/status
   - plugins/status
   - policies/status
@@ -207,12 +210,11 @@ rules:
 - apiGroups:
   - kapro.io
   resources:
+  - deliveryunits
   - policies
-  - sources
   - substrateclasses
   - substratediscoverypolicies
   - substrates
-  - triggers
   verbs:
   - get
   - list

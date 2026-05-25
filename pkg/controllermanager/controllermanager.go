@@ -47,8 +47,8 @@ type ControllerContext struct {
 	// Recorder is the shared event recorder for all controllers.
 	Recorder record.EventRecorder
 
-	// ActuatorRegistry resolves KAI implementations by FleetCluster.spec.delivery.
-	// Controllers call ActuatorRegistry.Resolve(env.Spec.Delivery.RegistryKey())
+	// ActuatorRegistry resolves KAI implementations by FleetCluster.spec.substrate.
+	// Controllers call ActuatorRegistry.Resolve(env.Spec.Substrate.RegistryKey())
 	// to get the correct adapter — Flux, Argo, or any registered substrate.
 	ActuatorRegistry *actuator.Registry
 
@@ -128,7 +128,7 @@ var controllerAliases = map[string]string{}
 // defaultControllers is the public-preview core controller set. Target is
 // intentionally omitted from user-facing defaults and selected implicitly
 // whenever promotionrun is enabled.
-var defaultControllers = []string{"fleet", "plan", "promotion", "promotionrun", "cluster", "substrateclass", "substrate"}
+var defaultControllers = []string{"deliveryunit", "fleet", "plan", "promotion", "promotionrun", "cluster", "substrateclass", "substrate"}
 
 var implicitControllerDependencies = map[string][]string{
 	"promotionrun": {"target"},

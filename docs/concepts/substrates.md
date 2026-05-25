@@ -10,8 +10,8 @@ applied inside or for a target cluster.
 | `pull` | Edge, private, or outbound-only clusters | A spoke controller watches hub intent and applies from inside the workload cluster. |
 | `push` | Centrally reachable clusters | The hub patches a substrate object or Kubernetes API directly. |
 
-These are the values used in `Fleet.spec.delivery.mode` and
-`Cluster.spec.delivery.mode`.
+These are the values used in `Fleet.spec.substrate.mode` and
+`Cluster.spec.substrate.mode`.
 
 ## Existing Object Management Policy
 
@@ -25,7 +25,7 @@ postures for existing Argo CD or Flux objects:
 
 Use these policies through discovery/adoption configuration, for example
 `Substrate.spec.discovery.managementPolicy`, not through
-`spec.delivery.mode`.
+`spec.substrate.mode`.
 
 ## Built-In Substrates
 

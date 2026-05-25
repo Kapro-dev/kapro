@@ -5,9 +5,9 @@ without copying substrate credentials or rewriting every workload into Kapro
 objects.
 
 Use existing GitOps adoption in three steps: observe the selected substrate objects,
-review the generated `Source` and discovery reports, then adopt only the
-version fields the team has approved. A `Promotion` still runs through a
-`Fleet` and `Plan`; Argo CD or Flux still reconciles the workload.
+review the generated `DeliveryUnit` source mappings and discovery reports, then
+adopt only the version fields the team has approved. A `Promotion` still runs
+through a `Fleet` and `Plan`; Argo CD or Flux still reconciles the workload.
 
 ## Argo CD
 
@@ -33,19 +33,19 @@ tracked YAML/JSON files from `git ls-files`, scans common GitOps prefixes by
 default, and writes `discovery/argo-cache.json` so repeat scans skip unchanged
 Git blobs.
 
-The scanner is intentionally bounded: 10,000 candidate files and 1,000
-`Source` units by default. Prefer `--path-prefix` for unique monorepo layouts;
+The scanner is intentionally bounded: 10,000 candidate files and 1,000 source
+mapping units by default. Prefer `--path-prefix` for unique monorepo layouts;
 raise `--max-files` or `--max-units` only when the generated report is still
 small enough to review.
 
 The generated `Substrate` starts with `managementPolicy: Observe`. Argo CD
 keeps cluster credentials, repository credentials, Projects, Applications, and
 ApplicationSets. Kapro reads metadata and health through Kubernetes RBAC. After
-the discovered graph and `Source` are correct, switch the profile to
+the discovered graph and `DeliveryUnit` source mappings are correct, switch the profile to
 `managementPolicy: Adopt` for selected version writes such as
 `spec.source.targetRevision`.
 
-Discovery writes `sources/checkout.yaml`, `discovery/review-summary.yaml`,
+Discovery writes `deliveryunits/checkout.yaml`, `discovery/review-summary.yaml`,
 `discovery/argo-discovery.yaml`, and `discovery/kapro-git-map.yaml`. The review
 summary is the sign-off checklist; the source file is the executable mapping
 used for Git-native promotion writes:
@@ -53,7 +53,7 @@ used for Git-native promotion writes:
 ```bash
 kapro source apply \
   --repo . \
-  --source ./kapro-connect/sources/checkout.yaml \
+  --source ./kapro-connect/deliveryunits/checkout.yaml \
   --set checkout-api=2.0.0 \
   --include argocd/environments/dev.json
 ```
@@ -143,8 +143,8 @@ metadata:
 
 The root app remains Argo CD's packaging mechanism. Kapro adds `PromotionRun`
 waves, gates, approvals, and evidence around the children that actually map to
-`Source` units. If a team wants the root app to be the `Source` unit, label only
-the root and keep children unlabelled.
+DeliveryUnit source mapping units. If a team wants the root app to be the unit,
+label only the root and keep children unlabelled.
 
 ### Argo Clusters And Secrets
 

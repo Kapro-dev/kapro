@@ -26,7 +26,7 @@ func deps(names ...string) []kaprov1alpha1.StageDependency {
 func TestValidateFleetCluster_MissingMode(t *testing.T) {
 	mc := &kaprov1alpha1.Cluster{
 		Spec: kaprov1alpha1.ClusterSpec{
-			Delivery: kaprov1alpha1.DeliverySpec{Mode: "", SubstrateRef: "flux"},
+			Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: "", SubstrateRef: "flux"},
 		},
 	}
 	if err := mcValidate(mc); err == nil {
@@ -37,7 +37,7 @@ func TestValidateFleetCluster_MissingMode(t *testing.T) {
 func TestValidateFleetCluster_MissingSubstrate(t *testing.T) {
 	mc := &kaprov1alpha1.Cluster{
 		Spec: kaprov1alpha1.ClusterSpec{
-			Delivery: kaprov1alpha1.DeliverySpec{Mode: "pull", SubstrateRef: ""},
+			Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: "pull", SubstrateRef: ""},
 		},
 	}
 	if err := mcValidate(mc); err == nil {
@@ -48,7 +48,7 @@ func TestValidateFleetCluster_MissingSubstrate(t *testing.T) {
 func TestValidateFleetCluster_FluxMissingSubSpec(t *testing.T) {
 	mc := &kaprov1alpha1.Cluster{
 		Spec: kaprov1alpha1.ClusterSpec{
-			Delivery: kaprov1alpha1.DeliverySpec{Mode: "pull", SubstrateRef: "flux"},
+			Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: "pull", SubstrateRef: "flux"},
 		},
 	}
 	if err := mcValidate(mc); err != nil {
@@ -59,7 +59,7 @@ func TestValidateFleetCluster_FluxMissingSubSpec(t *testing.T) {
 func TestValidateFleetCluster_FluxValid(t *testing.T) {
 	mc := &kaprov1alpha1.Cluster{
 		Spec: kaprov1alpha1.ClusterSpec{
-			Delivery: kaprov1alpha1.DeliverySpec{
+			Substrate: kaprov1alpha1.SubstrateBindingSpec{
 				Mode: "pull", SubstrateRef: "flux",
 				Parameters: map[string]string{"namespace": "flux-system", "ociRepository": "cluster-a"},
 			},
@@ -73,7 +73,7 @@ func TestValidateFleetCluster_FluxValid(t *testing.T) {
 func TestValidateFleetCluster_CustomSubstrateAllowed(t *testing.T) {
 	mc := &kaprov1alpha1.Cluster{
 		Spec: kaprov1alpha1.ClusterSpec{
-			Delivery: kaprov1alpha1.DeliverySpec{Mode: "pull", SubstrateRef: "kserve"},
+			Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: "pull", SubstrateRef: "kserve"},
 		},
 	}
 	if err := mcValidate(mc); err != nil {

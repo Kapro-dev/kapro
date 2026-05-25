@@ -130,6 +130,12 @@ func lintOneDoc(data []byte) []Issue {
 	}
 
 	switch meta.Kind {
+	case "DeliveryUnit":
+		var du kaprov1alpha1.DeliveryUnit
+		if err := yaml.Unmarshal(data, &du); err != nil {
+			return parseFail(meta.Kind, meta.Metadata.Name, err)
+		}
+		return tagIssues(LintDeliveryUnit(&du), meta.Kind, du.Name)
 	case "Kapro":
 		var k kaprov1alpha1.Fleet
 		if err := yaml.Unmarshal(data, &k); err != nil {
@@ -149,8 +155,8 @@ func lintOneDoc(data []byte) []Issue {
 		}
 		return tagIssues(LintPromotionPlan(&pp), meta.Kind, pp.Name)
 	default:
-		// Other Kapro kinds (SubstrateProfile, FleetCluster, Approval,
-		// PromotionRun, PromotionTrigger, etc.) are out of scope for
+		// Other Kapro kinds (Substrate, Cluster, Approval,
+		// PromotionRun, Trigger, etc.) are out of scope for
 		// this version of the linter. Skip silently — running
 		// `kapro lint examples/**/*.yaml` should not flag manifests
 		// just because we have no rules for them yet.
@@ -179,36 +185,98 @@ func tagIssues(issues []Issue, kind, name string) []Issue {
 	return issues
 }
 
-// LintKapro checks a Kapro custom resource for required fields and
+// LintDeliveryUnit checks the canonical app/workload authoring object for
+// mistakes that otherwise lead to controller-derived Source/Trigger objects
+// failing later.
+func LintDeliveryUnit(du *kaprov1alpha1.DeliveryUnit) []Issue {
+	var out []Issue
+	if du.Name == "" {
+		out = append(out, errAt("metadata.name", "DeliveryUnit requires a name"))
+	}
+	if len(du.Spec.Source.Units) == 0 {
+		out = append(out, errAt("spec.source.units",
+			"at least one source unit is required"))
+	}
+	seenUnits := map[string]int{}
+	for i, unit := range du.Spec.Source.Units {
+		if unit.Name == "" {
+			out = append(out, errAt(fmt.Sprintf("spec.source.units[%d].name", i),
+				"unit name must not be empty"))
+			continue
+		}
+		if first, ok := seenUnits[unit.Name]; ok {
+			out = append(out, errAt(fmt.Sprintf("spec.source.units[%d].name", i),
+				fmt.Sprintf("duplicate unit %q also appears at spec.source.units[%d]", unit.Name, first)))
+			continue
+		}
+		seenUnits[unit.Name] = i
+	}
+
+	seenTriggers := map[string]int{}
+	for i, trigger := range du.Spec.Triggers {
+		name := strings.TrimSpace(trigger.Name)
+		if name == "" {
+			name = "default"
+		}
+		if first, ok := seenTriggers[name]; ok {
+			out = append(out, errAt(fmt.Sprintf("spec.triggers[%d].name", i),
+				fmt.Sprintf("duplicate derived Trigger suffix %q also appears at spec.triggers[%d]", name, first)))
+		} else {
+			seenTriggers[name] = i
+		}
+		if strings.TrimSpace(trigger.FleetRef) == "" && strings.TrimSpace(du.Spec.DefaultFleetRef) == "" {
+			out = append(out, errAt(fmt.Sprintf("spec.triggers[%d].fleetRef", i),
+				"trigger requires fleetRef or spec.defaultFleetRef"))
+		}
+		if trigger.Source.Type == "" {
+			out = append(out, errAt(fmt.Sprintf("spec.triggers[%d].source.type", i),
+				"trigger source type is required"))
+			continue
+		}
+		if trigger.Source.Type != "oci" {
+			out = append(out, errAt(fmt.Sprintf("spec.triggers[%d].source.type", i),
+				fmt.Sprintf("unsupported trigger source type %q", trigger.Source.Type)))
+			continue
+		}
+		if trigger.Source.OCI == nil {
+			out = append(out, errAt(fmt.Sprintf("spec.triggers[%d].source.oci", i),
+				"source.oci is required when source.type=oci"))
+			continue
+		}
+		if trigger.Source.OCI.Repository == "" {
+			out = append(out, errAt(fmt.Sprintf("spec.triggers[%d].source.oci.repository", i),
+				"OCI trigger repository is required"))
+		}
+		if trigger.Source.OCI.TagPattern == "" {
+			out = append(out, errAt(fmt.Sprintf("spec.triggers[%d].source.oci.tagPattern", i),
+				"OCI trigger tagPattern is required"))
+		}
+	}
+	return out
+}
+
+// LintKapro checks a Fleet custom resource for required fields and
 // common foot-guns. It does not validate cluster connectivity.
 func LintKapro(k *kaprov1alpha1.Fleet) []Issue {
 	var out []Issue
 	if k.Name == "" {
-		out = append(out, errAt("metadata.name", "Kapro requires a name"))
+		out = append(out, errAt("metadata.name", "Fleet requires a name"))
 	}
-	// FleetSpec.Source is *SourceSpec — nil when the inline
-	// source path is not used. Treat "source is set" as "non-nil with
-	// at least one unit" so the exactly-one-of check is panic-safe.
+	// FleetSpec.Source is a legacy compatibility hook. Target-set Fleets are
+	// valid with neither source nor sourceRef because DeliveryUnit owns source
+	// intent in the public-preview authoring path.
 	inlineSourceSet := k.Spec.Source != nil && len(k.Spec.Source.Units) > 0
-	if k.Spec.SourceRef == "" && !inlineSourceSet {
-		out = append(out, errAt("spec.source / spec.sourceRef",
-			"exactly one of spec.source or spec.sourceRef must be set"))
-	}
 	if k.Spec.SourceRef != "" && inlineSourceSet {
 		out = append(out, errAt("spec.source / spec.sourceRef",
 			"only one of spec.source or spec.sourceRef may be set"))
 	}
-	if k.Spec.Delivery.SubstrateRef == "" {
-		out = append(out, errAt("spec.delivery.substrateRef",
-			"delivery substrate is required (e.g. flux, argocd)"))
+	if k.Spec.Substrate.SubstrateRef == "" {
+		out = append(out, errAt("spec.substrate.substrateRef",
+			"delivery substrate is required (e.g. flux, argo)"))
 	}
 	if len(k.Spec.Clusters) == 0 {
 		out = append(out, warnAt("spec.clusters",
 			"no clusters configured; the Fleet will not roll anything until a Cluster matches"))
-	}
-	if k.Spec.Plan.Stages == nil && k.Spec.SourceRef == "" {
-		out = append(out, warnAt("spec.plan",
-			"no inline plan; ensure a Plan CR exists and is referenced from Promotion.spec.plans[]"))
 	}
 	return out
 }
@@ -221,6 +289,9 @@ func LintPromotion(p *kaprov1alpha1.Promotion) []Issue {
 	}
 	if p.Spec.FleetRef == "" {
 		out = append(out, errAt("spec.fleetRef", "fleetRef is required"))
+	}
+	if p.Spec.DeliveryUnitRef == "" {
+		out = append(out, errAt("spec.deliveryUnitRef", "deliveryUnitRef is required"))
 	}
 	if p.Spec.Version == "" && len(p.Spec.Versions) == 0 {
 		out = append(out, errAt("spec.version / spec.versions",

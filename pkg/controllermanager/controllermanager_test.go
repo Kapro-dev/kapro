@@ -5,7 +5,7 @@ import "testing"
 func TestParseControllerNamesWildcardUsesCanonicalNames(t *testing.T) {
 	selected := ParseControllerNames("*")
 
-	for _, name := range []string{"fleet", "plan", "promotion", "promotionrun", "target", "cluster", "approval", "substrate", "plugin", "trigger", "cluster-bootstrap", "clustertemplate"} {
+	for _, name := range []string{"deliveryunit", "fleet", "plan", "promotion", "promotionrun", "target", "cluster", "approval", "substrate", "plugin", "trigger", "cluster-bootstrap", "clustertemplate"} {
 		if !selected[name] {
 			t.Fatalf("wildcard selection missing canonical controller %q: %#v", name, selected)
 		}
@@ -54,7 +54,7 @@ func TestParseControllerNamesExcludesAlias(t *testing.T) {
 func TestDefaultControllersFlagUsesCoreControllers(t *testing.T) {
 	selected := ParseControllerNames(DefaultControllersFlag())
 
-	for _, name := range []string{"fleet", "plan", "promotion", "promotionrun", "target", "cluster", "substrateclass", "substrate"} {
+	for _, name := range []string{"deliveryunit", "fleet", "plan", "promotion", "promotionrun", "target", "cluster", "substrateclass", "substrate"} {
 		if !selected[name] {
 			t.Fatalf("default controller selection missing %q: %#v", name, selected)
 		}

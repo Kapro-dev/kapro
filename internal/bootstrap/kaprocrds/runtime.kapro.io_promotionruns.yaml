@@ -77,6 +77,14 @@ spec:
               Uniqueness and dependency-reference validation is enforced by the admission webhook,
               which can perform DAG checks without the quadratic CEL cost budget constraints.
             properties:
+              deliveryUnitRef:
+                description: DeliveryUnitRef is the logical unit this execution attempt
+                  belongs to.
+                type: string
+              fleetRef:
+                description: FleetRef scopes target selection to the referenced Fleet's
+                  clusters.
+                type: string
               plans:
                 description: Plans is the DAG of plan nodes.
                 items:

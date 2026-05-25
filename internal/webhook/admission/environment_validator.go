@@ -61,16 +61,16 @@ func (v *FleetClusterValidator) Handle(ctx context.Context, req admission.Reques
 // Substrates as warnings, not denials. Admission stays structural; the Target
 // reconciler waits for Substrate existence/readiness before it applies.
 func validateFleetClusterSubstrateRef(ctx context.Context, reader client.Reader, mc *kaprov1alpha1.Cluster) ([]string, error) {
-	name := mc.Spec.Delivery.SubstrateRef
+	name := mc.Spec.Substrate.SubstrateRef
 	if name == "" {
 		return nil, nil // syntactic validator already rejected the empty case
 	}
 	var profile kaprov1alpha1.Substrate
 	if err := reader.Get(ctx, client.ObjectKey{Name: name}, &profile); err != nil {
 		if apierrors.IsNotFound(err) {
-			return []string{fmt.Sprintf("cluster.spec.delivery.substrateRef=%q: substrate not found yet; Target execution will wait for it", name)}, nil
+			return []string{fmt.Sprintf("cluster.spec.substrate.substrateRef=%q: substrate not found yet; Target execution will wait for it", name)}, nil
 		}
-		return []string{fmt.Sprintf("cluster.spec.delivery.substrateRef=%q: substrate lookup failed; Target execution will retry: %v", name, err)}, nil
+		return []string{fmt.Sprintf("cluster.spec.substrate.substrateRef=%q: substrate lookup failed; Target execution will retry: %v", name, err)}, nil
 	}
 	return validateResolvedSubstrateParameters(mc, profile.Spec.SubstrateKind()), nil
 }
@@ -86,25 +86,25 @@ func validateFleetCluster(mc *kaprov1alpha1.Cluster) error {
 }
 
 func validateActuator(mc *kaprov1alpha1.Cluster) error {
-	act := mc.Spec.Delivery
+	act := mc.Spec.Substrate
 	if act.Mode == "" {
-		return fmt.Errorf("cluster.spec.delivery.mode must be set")
+		return fmt.Errorf("cluster.spec.substrate.mode must be set")
 	}
 	if act.SubstrateRef == "" {
-		return fmt.Errorf("cluster.spec.delivery.substrateRef must be set")
+		return fmt.Errorf("cluster.spec.substrate.substrateRef must be set")
 	}
 	return nil
 }
 
 func validateResolvedSubstrateParameters(mc *kaprov1alpha1.Cluster, substrateKind string) []string {
-	act := mc.Spec.Delivery
+	act := mc.Spec.Substrate
 	switch substrateKind {
 	case string(kaprov1alpha1.SubstrateKindFlux):
-		if act.Mode == kaprov1alpha1.DeliveryModePull && act.Param("ociRepository", "") == "" {
-			return []string{"cluster.spec.delivery.parameters.ociRepository is required by flux pull delivery; Target execution will fail until it is set"}
+		if act.Mode == kaprov1alpha1.SubstrateModePull && act.Param("ociRepository", "") == "" {
+			return []string{"cluster.spec.substrate.parameters.ociRepository is required by flux pull delivery; Target execution will fail until it is set"}
 		}
-		if act.Mode == kaprov1alpha1.DeliveryModePush && act.Param("resourceSet", "") == "" {
-			return []string{"cluster.spec.delivery.parameters.resourceSet is required by flux push delivery; Target execution will fail until it is set"}
+		if act.Mode == kaprov1alpha1.SubstrateModePush && act.Param("resourceSet", "") == "" {
+			return []string{"cluster.spec.substrate.parameters.resourceSet is required by flux push delivery; Target execution will fail until it is set"}
 		}
 	}
 	return nil

@@ -1,32 +1,16 @@
-# Apply after substrates/flux.yaml and before promotion.yaml.
+# Apply after substrates/flux.yaml, deliveryunit.yaml, and plan.yaml.
 # These registry.example.com placeholders are fine for reading the hub API
 # shape; replace them before expecting real spoke workload convergence.
-# Inline plan selectors are simple label maps; standalone Plan objects use
-# selector.matchLabels.
 apiVersion: kapro.io/v1alpha1
 kind: Fleet
 metadata:
   name: checkout
   labels:
+    kapro.io/unit: checkout
     kapro.io/team: platform
     app.kubernetes.io/name: checkout
 spec:
-  registry:
-    url: oci://registry.example.com/kapro
-  source:
-    registries:
-      - name: app
-        url: oci://registry.example.com/charts
-        type: oci
-    defaults:
-      repo: app
-      targetNamespace: checkout
-    units:
-      - name: checkout
-        chartName: checkout
-        # Catalog/default version. Promotion.spec.version is the rollout input.
-        version: 1.2.3
-  delivery:
+  substrate:
     mode: pull
     substrateRef: flux
   clusters:
@@ -40,15 +24,3 @@ spec:
         kapro.io/stage: production
         kapro.io/region: eu
         kapro.io/quickstart: flux
-  plan:
-    stages:
-      - name: canary
-        selector:
-          kapro.io/stage: canary
-          kapro.io/quickstart: flux
-      - name: production
-        selector:
-          kapro.io/stage: production
-          kapro.io/quickstart: flux
-        dependsOn:
-          - stage: canary

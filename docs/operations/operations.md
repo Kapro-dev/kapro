@@ -148,8 +148,8 @@ promotion state and spoke controllers or GitOps backends converge local
 workloads.
 
 For multi-cloud and air-gapped fleets, prefer
-`Cluster.spec.delivery.mode: pull` with a `Substrate` selected by
-`spec.delivery.substrateRef`. In pull mode the hub writes desired versions to
+`Cluster.spec.substrate.mode: pull` with a `Substrate` selected by
+`spec.substrate.substrateRef`. In pull mode the hub writes desired versions to
 `Cluster.spec` and does not patch spoke workloads directly during a
 promotionrun. Each spoke applies the desired state locally through its selected
 substrate, reports `status.currentVersions` and `status.health`, and renews

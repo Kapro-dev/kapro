@@ -32,7 +32,7 @@ func (stubActuator) IsAllConverged(context.Context, *kaprov1alpha1.Cluster, map[
 func TestRegistryRegisterRegistrationStoresCapabilities(t *testing.T) {
 	registry := NewRegistry()
 	err := registry.RegisterRegistration(Registration{
-		Mode: kaprov1alpha1.DeliveryModePush,
+		Mode: kaprov1alpha1.SubstrateModePush,
 		Capabilities: Capabilities{
 			SubstrateKind:       kaprov1alpha1.SubstrateKindArgo,
 			ExecutionScope:      kaprov1alpha1.ExecutionScopeHub,
@@ -56,7 +56,7 @@ func TestRegistryRegisterRegistrationStoresCapabilities(t *testing.T) {
 	if reg.Capabilities.ContractVersion != ContractVersionV1Alpha1 {
 		t.Fatalf("contract version = %q", reg.Capabilities.ContractVersion)
 	}
-	if !reg.Capabilities.SupportsMode(kaprov1alpha1.DeliveryModePush) {
+	if !reg.Capabilities.SupportsMode(kaprov1alpha1.SubstrateModePush) {
 		t.Fatalf("capabilities do not include push mode: %#v", reg.Capabilities)
 	}
 	if !reg.Capabilities.SupportsTwoPhase {
@@ -73,7 +73,7 @@ func TestRegistryResolveWrapsActuatorWithTracing(t *testing.T) {
 
 	registry := NewRegistry()
 	err := registry.RegisterRegistration(Registration{
-		Mode: kaprov1alpha1.DeliveryModePush,
+		Mode: kaprov1alpha1.SubstrateModePush,
 		Capabilities: Capabilities{
 			SubstrateKind:       kaprov1alpha1.SubstrateKindArgo,
 			Actuator:            "argo",
@@ -169,7 +169,7 @@ func TestRegistryRejectsInvalidRegistration(t *testing.T) {
 	}
 	// When Name is empty and Mode/Capabilities.Modes are empty too,
 	// RegistryKey() falls back to "/<adapter>" — a key that no
-	// DeliverySpec.RegistryKey() at resolve time can ever match. Reject
+	// SubstrateBindingSpec.RegistryKey() at resolve time can ever match. Reject
 	// instead of silently registering an unreachable actuator.
 	leadingSlash := Registration{
 		Actuator:     stubActuator{},

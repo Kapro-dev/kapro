@@ -27,7 +27,7 @@ type RequestEnvelope struct {
 	// Substrate.spec.configRef.
 	Config runtime.Object
 	// Binding is reserved for typed app/workload bindings. It is nil in the
-	// Phase-1 class/config path while delivery.parameters remains the app-level
+	// Phase-1 class/config path while substrate.parameters remains the app-level
 	// compatibility surface.
 	Binding runtime.Object
 	// Cluster is the target cluster Kapro is promoting to.

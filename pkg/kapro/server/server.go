@@ -500,6 +500,10 @@ func RegisterAdmission(_ context.Context, s *Server) error {
 			&crwebhook.Admission{Handler: kaploadmission.NewFleetClusterValidator(decoder, s.Manager.GetAPIReader())},
 		)
 		s.Manager.GetWebhookServer().Register(
+			"/validate-kapro-io-v1alpha1-deliveryunit",
+			&crwebhook.Admission{Handler: kaploadmission.NewDeliveryUnitValidator(decoder, s.Manager.GetAPIReader())},
+		)
+		s.Manager.GetWebhookServer().Register(
 			"/validate-kapro-io-v1alpha1-promotionrun",
 			&crwebhook.Admission{Handler: kaploadmission.NewPromotionRunValidator(decoder)},
 		)

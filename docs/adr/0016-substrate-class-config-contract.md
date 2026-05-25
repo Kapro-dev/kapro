@@ -41,7 +41,7 @@ We introduce a Phase-1 substrate contract:
 - The `substrateclass` controller writes status for Kapro-owned classes
   (`kapro.io/*` controller names). External substrate controllers own status
   for their own domain-prefixed controller names.
-- App/workload-specific binding remains in `delivery.parameters` for Phase 1.
+- App/workload-specific binding remains in `substrate.parameters` for Phase 1.
   Typed binding CRDs and `delivery.bindingRef` are deferred until the config
   contract is proven.
 - KSI, the Kapro Substrate Interface, is the public Go contract for substrate
@@ -83,7 +83,7 @@ transition.
 The end state is config plus binding: platform-owned config and app-owned
 binding. Shipping both immediately would add too many CRDs and force new users
 through more objects before the class/config contract is proven. Phase 1 keeps
-`delivery.parameters` as the binding-equivalent compatibility surface.
+`substrate.parameters` as the binding-equivalent compatibility surface.
 
 ### Require `versionField` in every binding
 

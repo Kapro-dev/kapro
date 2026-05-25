@@ -33,6 +33,7 @@ var publicCRDs = map[string]string{
 	"kapro.io_approvals.yaml":                  "Approval",
 	"kapro.io_clusters.yaml":                   "Cluster",
 	"kapro.io_clustertemplates.yaml":           "ClusterTemplate",
+	"kapro.io_deliveryunits.yaml":              "DeliveryUnit",
 	"kapro.io_fleets.yaml":                     "Fleet",
 	"kapro.io_plans.yaml":                      "Plan",
 	"kapro.io_plugins.yaml":                    "Plugin",
@@ -95,6 +96,7 @@ func TestRemovedPreviewCRDsDoNotShip(t *testing.T) {
 	for _, rel := range []string{
 		"config/crd/bases/kapro.io_backends.yaml",
 		"config/crd/bases/kapro.io_gateexpressions.yaml",
+		"config/crd/bases/kapro.io_promotionunits.yaml",
 		"config/crd/bases/kapro.io_fleetdriftreports.yaml",
 		"config/crd/bases/kapro.io_promotionruns.yaml",
 		"config/crd/bases/kapro.io_targets.yaml",
@@ -118,6 +120,19 @@ func TestSubstrateCRDUsesPublicNaming(t *testing.T) {
 	for _, stale := range []string{"name: backends.kapro.io", "kind: Backend", "backendRef"} {
 		if strings.Contains(text, stale) {
 			t.Fatalf("kapro.io_substrates.yaml still contains stale %q", stale)
+		}
+	}
+}
+
+func TestFleetAndClusterUseSubstrateBindingInSpec(t *testing.T) {
+	root := repoRoot(t)
+	for _, file := range []string{"kapro.io_fleets.yaml", "kapro.io_clusters.yaml"} {
+		props := crdSpecProperties(t, filepath.Join(root, "config", "crd", "bases", file))
+		if _, ok := props["substrate"]; !ok {
+			t.Fatalf("%s missing spec.substrate", file)
+		}
+		if _, ok := props["delivery"]; ok {
+			t.Fatalf("%s still exposes spec.delivery in the authored schema", file)
 		}
 	}
 }
@@ -197,6 +212,23 @@ func readCRD(t *testing.T, path string) crdDocument {
 		t.Fatalf("parse %s: %v", path, err)
 	}
 	return crd
+}
+
+func crdSpecProperties(t *testing.T, path string) map[string]any {
+	t.Helper()
+	var doc map[string]any
+	if err := yaml.Unmarshal(readFile(t, path), &doc); err != nil {
+		t.Fatalf("parse %s: %v", path, err)
+	}
+	spec := doc["spec"].(map[string]any)
+	versions := spec["versions"].([]any)
+	version := versions[0].(map[string]any)
+	schema := version["schema"].(map[string]any)
+	openapi := schema["openAPIV3Schema"].(map[string]any)
+	rootProps := openapi["properties"].(map[string]any)
+	specSchema := rootProps["spec"].(map[string]any)
+	props := specSchema["properties"].(map[string]any)
+	return props
 }
 
 func readFile(t *testing.T, path string) []byte {

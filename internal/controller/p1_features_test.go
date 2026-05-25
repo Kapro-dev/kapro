@@ -75,7 +75,7 @@ func TestPromotionRunReconciler_MetricsCheck_GateTemplatesEvaluatedWithoutMetric
 
 	mc := &kaprov1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: envRefName, Labels: map[string]string{"tier": "tmpl"}},
-		Spec:       kaprov1alpha1.ClusterSpec{Delivery: kaprov1alpha1.DeliverySpec{Mode: "pull", SubstrateRef: "flux"}},
+		Spec:       kaprov1alpha1.ClusterSpec{Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: "pull", SubstrateRef: "flux"}},
 	}
 	promotionplan := &kaprov1alpha1.Plan{
 		ObjectMeta: metav1.ObjectMeta{Name: promotionplanName},
@@ -228,7 +228,7 @@ func TestPromotionRunReconciler_PromotionRunsForNewMatchingCluster(t *testing.T)
 			Labels: map[string]string{"tier": "prod", "region": "eu"},
 		},
 		Spec: kaprov1alpha1.ClusterSpec{
-			Delivery: kaprov1alpha1.DeliverySpec{Mode: "pull", SubstrateRef: "flux"},
+			Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: "pull", SubstrateRef: "flux"},
 		},
 	}
 

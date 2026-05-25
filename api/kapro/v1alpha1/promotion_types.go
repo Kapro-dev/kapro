@@ -7,13 +7,22 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// PromotionSpec is the durable intent to deliver a version through a Fleet.
-// It refers to a parent Fleet (which owns source, plan, clusters, delivery)
-// and adds the rollout target (version, scope, optional plan override).
+// PromotionSpec is the explicit action to deliver a DeliveryUnit version
+// through a Fleet. DeliveryUnit owns source/default intent, Fleet owns target
+// clusters and delivery defaults, and Plan owns rollout strategy.
 type PromotionSpec struct {
+	// DeliveryUnitRef is the logical app/workload being promoted. Promotion is
+	// the explicit action boundary; changing DeliveryUnit source/defaults does
+	// not deploy by itself.
+	// +kubebuilder:validation:MinLength=1
+	DeliveryUnitRef string `json:"deliveryUnitRef"`
 	// FleetRef is the name of the Fleet this intent targets.
 	// +kubebuilder:validation:MinLength=1
 	FleetRef string `json:"fleetRef"`
+	// PlanRef is the primary Plan for this action. When unset, the controller
+	// uses DeliveryUnit.spec.defaultPlanRef, then any explicit Plans entries.
+	// +optional
+	PlanRef string `json:"planRef,omitempty"`
 	// Version is the default revision to deliver across all units.
 	// +optional
 	Version string `json:"version,omitempty"`
@@ -21,9 +30,9 @@ type PromotionSpec struct {
 	// Either Version or at least one Versions entry must be set.
 	// +optional
 	Versions map[string]string `json:"versions,omitempty"`
-	// Plans optionally overrides the inline Fleet.spec.plan
-	// for this intent. When unset, the controller derives a single plan ref
-	// from the parent Fleet's inline plan.
+	// Plans optionally defines the plan DAG for this action. When unset, the
+	// controller uses PlanRef, DeliveryUnit.spec.defaultPlanRef, or legacy
+	// Fleet.spec.plan compatibility in that order.
 	// +kubebuilder:validation:MaxItems=64
 	// +optional
 	Plans []PlanRef `json:"plans,omitempty"`

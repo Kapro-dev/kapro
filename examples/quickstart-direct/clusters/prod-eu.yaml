@@ -5,7 +5,7 @@ metadata:
   labels:
     kapro.io/stage: production
 spec:
-  delivery:
+  substrate:
     mode: push
     substrateRef: direct
     parameters:

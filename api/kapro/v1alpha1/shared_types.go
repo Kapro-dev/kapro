@@ -1,6 +1,20 @@
-// Shared cross-domain types: cluster topology, delivery mode/driver, and
-// the DeliverySpec consumed by Cluster, Fleet, and Substrate.
+// Shared cross-domain types: cluster topology, substrate binding, and
+// substrate-neutral execution settings consumed by Cluster and Fleet.
 package v1alpha1
+
+const (
+	// LabelUnit is the canonical cross-layer identity label for the logical
+	// delivery unit. User-authored, controller-derived, and runtime objects use
+	// this label to make the Kubernetes API browsable by app/workload boundary.
+	LabelUnit = "kapro.io/unit"
+	// LabelManagedBy marks objects generated or managed by Kapro.
+	LabelManagedBy = "kapro.io/managed-by"
+	// LabelTeam is the tenancy ownership label required on promotion-affecting
+	// resources by the default admission policy.
+	LabelTeam = "kapro.io/team"
+	// ManagedByKapro is the standard value for LabelManagedBy.
+	ManagedByKapro = "kapro"
+)
 
 // ---- Shared cluster types ---------------------------------------------------
 
@@ -27,16 +41,16 @@ type TargetTopology struct {
 	Tier string `json:"tier,omitempty"`
 }
 
-// DeliveryMode controls where substrate delivery is executed.
+// SubstrateMode controls where substrate execution is performed.
 // +kubebuilder:validation:Enum=push;pull
-type DeliveryMode string
+type SubstrateMode string
 
 const (
-	// DeliveryModePush means the hub calls a hub-side substrate adapter.
-	DeliveryModePush DeliveryMode = "push"
-	// DeliveryModePull means the hub records desired state and a spoke agent
+	// SubstrateModePush means the hub calls a hub-side substrate adapter.
+	SubstrateModePush SubstrateMode = "push"
+	// SubstrateModePull means the hub records desired state and a spoke agent
 	// calls a local substrate adapter.
-	DeliveryModePull DeliveryMode = "pull"
+	SubstrateModePull SubstrateMode = "pull"
 )
 
 // ExecutionScope identifies where a substrate adapter is allowed to run.
@@ -150,13 +164,13 @@ type SubstrateObjectReference struct {
 	Namespace string `json:"namespace,omitempty"`
 }
 
-// DeliverySpec selects a substrate-neutral delivery profile for a cluster or fleet.
-// Substrate-specific resource names live in parameters and are interpreted only by
-// the selected substrate adapter.
-type DeliverySpec struct {
-	// Mode controls who performs delivery.
+// SubstrateBindingSpec selects a substrate-neutral execution profile for a
+// cluster or fleet. Substrate-specific resource names live in parameters and
+// are interpreted only by the selected substrate adapter.
+type SubstrateBindingSpec struct {
+	// Mode controls where substrate execution happens.
 	// +kubebuilder:default="pull"
-	Mode DeliveryMode `json:"mode"`
+	Mode SubstrateMode `json:"mode"`
 	// SubstrateRef is the Substrate name. Built-in profiles commonly use
 	// "flux" or "argo"; external profiles may use any platform-defined name.
 	SubstrateRef string `json:"substrateRef"`
@@ -171,16 +185,16 @@ type DeliverySpec struct {
 	Parameters map[string]string `json:"parameters,omitempty"`
 }
 
-// RegistryKey returns the composite key used to resolve the delivery adapter.
-func (d *DeliverySpec) RegistryKey() string {
+// RegistryKey returns the composite key used to resolve the substrate adapter.
+func (d *SubstrateBindingSpec) RegistryKey() string {
 	if d == nil {
 		return "/"
 	}
 	return string(d.Mode) + "/" + d.SubstrateRef
 }
 
-// Param returns a substrate-specific delivery parameter with a default.
-func (d *DeliverySpec) Param(name, fallback string) string {
+// Param returns a substrate-specific parameter with a default.
+func (d *SubstrateBindingSpec) Param(name, fallback string) string {
 	if d == nil || d.Parameters == nil || d.Parameters[name] == "" {
 		return fallback
 	}

@@ -412,7 +412,7 @@ func TestTriggerTargetRollbackEmitsTraceWhenRollbackUnsupported(t *testing.T) {
 	cluster := &kaprov1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
 		Spec: kaprov1alpha1.ClusterSpec{
-			Delivery: kaprov1alpha1.DeliverySpec{
+			Substrate: kaprov1alpha1.SubstrateBindingSpec{
 				Mode:         "pull",
 				SubstrateRef: "rollbackless",
 			},
@@ -433,7 +433,7 @@ func TestTriggerTargetRollbackEmitsTraceWhenRollbackUnsupported(t *testing.T) {
 	registry := actuator.NewRegistry()
 	if err := registry.RegisterRegistration(actuator.Registration{
 		Name:     "pull/rollbackless",
-		Mode:     kaprov1alpha1.DeliveryModePull,
+		Mode:     kaprov1alpha1.SubstrateModePull,
 		Actuator: stub,
 		Capabilities: actuator.Capabilities{
 			SubstrateKind:    kaprov1alpha1.SubstrateKindExternal,

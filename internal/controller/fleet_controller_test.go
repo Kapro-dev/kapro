@@ -252,8 +252,8 @@ func TestFleetReconcilerSkipsResourceSetForNativeSubstrates(t *testing.T) {
 			Source: &kaprov1alpha1.SourceSpec{
 				Units: []kaprov1alpha1.Unit{{Name: "checkout", Version: "ghcr.io/example/checkout:0.1.0"}},
 			},
-			Delivery: kaprov1alpha1.DeliverySpec{
-				Mode:         kaprov1alpha1.DeliveryModePush,
+			Substrate: kaprov1alpha1.SubstrateBindingSpec{
+				Mode:         kaprov1alpha1.SubstrateModePush,
 				SubstrateRef: "direct",
 			},
 			Clusters: []kaprov1alpha1.ClusterRef{{Name: "canary-eu", Labels: map[string]string{"kapro.io/stage": "canary"}}},
@@ -290,8 +290,66 @@ func TestFleetReconcilerSkipsResourceSetForNativeSubstrates(t *testing.T) {
 	if err := r.Get(ctx, client.ObjectKey{Name: "canary-eu"}, &cluster); err != nil {
 		t.Fatal(err)
 	}
-	if cluster.Spec.Delivery.SubstrateRef != "direct" || cluster.Spec.Delivery.Mode != kaprov1alpha1.DeliveryModePush {
-		t.Fatalf("cluster delivery = %#v", cluster.Spec.Delivery)
+	if cluster.Spec.Substrate.SubstrateRef != "direct" || cluster.Spec.Substrate.Mode != kaprov1alpha1.SubstrateModePush {
+		t.Fatalf("cluster delivery = %#v", cluster.Spec.Substrate)
+	}
+}
+
+func TestFleetReconcilerAcceptsTargetSetWithoutSourceOrInlinePlan(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	if err := clientgoscheme.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	fleet := &kaprov1alpha1.Fleet{
+		ObjectMeta: metav1.ObjectMeta{Name: "checkout"},
+		Spec: kaprov1alpha1.FleetSpec{
+			Substrate: kaprov1alpha1.SubstrateBindingSpec{
+				Mode:         kaprov1alpha1.SubstrateModePush,
+				SubstrateRef: "argo",
+				Parameters: map[string]string{
+					"namespace": "argocd",
+				},
+			},
+			Clusters: []kaprov1alpha1.ClusterRef{
+				{Name: "canary-eu", Labels: map[string]string{"kapro.io/stage": "canary"}},
+			},
+		},
+	}
+	r := &FleetReconciler{
+		Client: fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(fleet).
+			WithStatusSubresource(&kaprov1alpha1.Fleet{}, &kaprov1alpha1.Cluster{}).
+			Build(),
+	}
+
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "checkout"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	var got kaprov1alpha1.Fleet
+	if err := r.Get(ctx, client.ObjectKey{Name: "checkout"}, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Status.ClusterCount != 1 {
+		t.Fatalf("clusterCount = %d, want 1", got.Status.ClusterCount)
+	}
+	if got.Status.UnitCount != 0 {
+		t.Fatalf("unitCount = %d, want 0 for target-set Fleet without legacy source", got.Status.UnitCount)
+	}
+	if len(got.Status.Inventory) != 2 {
+		t.Fatalf("inventory = %v, want Cluster and Substrate entries", got.Status.Inventory)
+	}
+	var cluster kaprov1alpha1.Cluster
+	if err := r.Get(ctx, client.ObjectKey{Name: "canary-eu"}, &cluster); err != nil {
+		t.Fatal(err)
+	}
+	if cluster.Spec.Substrate.SubstrateRef != "argo" || cluster.Spec.Substrate.Param("namespace", "") != "argocd" {
+		t.Fatalf("cluster delivery = %#v", cluster.Spec.Substrate)
 	}
 }
 

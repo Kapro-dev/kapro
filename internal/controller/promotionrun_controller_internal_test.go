@@ -745,6 +745,37 @@ func TestListTargetsForStageUsesPromotionRunPlanner(t *testing.T) {
 	}
 }
 
+func TestListTargetsForStageScopesToPromotionRunFleet(t *testing.T) {
+	scheme := controllerTestScheme(t)
+	r := &PromotionRunReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(
+			&kaprov1alpha1.Fleet{
+				ObjectMeta: metav1.ObjectMeta{Name: "checkout"},
+				Spec: kaprov1alpha1.FleetSpec{
+					Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: "push", SubstrateRef: "argo"},
+					Clusters: []kaprov1alpha1.ClusterRef{
+						{Name: "cluster-a", Labels: map[string]string{"stage": "canary"}},
+					},
+				},
+			},
+			fleetClusterForStage("cluster-a", "canary"),
+			fleetClusterForStage("cluster-b", "canary"),
+		).Build(),
+	}
+	promotionrun := &kaproruntimev1alpha1.PromotionRun{
+		Spec: kaprov1alpha1.PromotionRunSpec{FleetRef: "checkout"},
+	}
+	promotionplan := promotionplanWithCanaryStage()
+
+	targets, err := r.listTargetsForStage(context.Background(), "main", promotionplan, promotionplan.Spec.Stages[0], promotionrun)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(targets) != 1 || targets[0].Name != "cluster-a" {
+		t.Fatalf("targets = %#v, want only cluster-a from PromotionRun fleet", targets)
+	}
+}
+
 func TestReconcilePromotionPlanStagesHonorsStageMaxParallel(t *testing.T) {
 	scheme := controllerTestScheme(t)
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(
@@ -851,7 +882,7 @@ func fleetClusterForStage(name, stage string) *kaprov1alpha1.Cluster {
 			Labels: map[string]string{"stage": stage},
 		},
 		Spec: kaprov1alpha1.ClusterSpec{
-			Delivery: kaprov1alpha1.DeliverySpec{Mode: "pull", SubstrateRef: "flux"},
+			Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: "pull", SubstrateRef: "flux"},
 		},
 	}
 }

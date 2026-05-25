@@ -113,6 +113,8 @@ apiVersion: kapro.io/v1alpha1
 kind: Plan
 metadata:
   name: checkout-keyless
+  labels:
+    kapro.io/team: checkout
 spec:
   stages:
     - name: canary
@@ -126,6 +128,8 @@ apiVersion: kapro.io/v1alpha1
 kind: Trigger
 metadata:
   name: checkout-oci-keyless
+  labels:
+    kapro.io/team: checkout
 spec:
   suspended: true
   source:
@@ -136,6 +140,7 @@ spec:
       requireSignature: true
       pollInterval: 5m
   promotionTemplate:
+    deliveryUnitRef: checkout
     fleetRef: checkout
     plans:
       - name: production
@@ -165,6 +170,8 @@ apiVersion: kapro.io/v1alpha1
 kind: Trigger
 metadata:
   name: checkout-oci-keyed
+  labels:
+    kapro.io/team: checkout
 spec:
   suspended: true
   source:
@@ -174,6 +181,7 @@ spec:
       tagPattern: "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
       requireSignature: true
   promotionTemplate:
+    deliveryUnitRef: checkout
     fleetRef: checkout
     plans:
       - name: production

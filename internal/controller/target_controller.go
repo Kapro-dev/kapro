@@ -1137,7 +1137,7 @@ func (r *TargetReconciler) resolveActuatorForCluster(ctx context.Context, cluste
 	if cluster == nil {
 		return "", nil, actuator.Capabilities{}, fmt.Errorf("cluster is nil")
 	}
-	delivery := cluster.Spec.Delivery
+	delivery := cluster.Spec.Substrate
 	key := delivery.RegistryKey()
 	var substrate *kaprov1alpha1.Substrate
 	if r.Client != nil && delivery.SubstrateRef != "" {
@@ -1199,14 +1199,14 @@ func requireTargetReadySubstrate(substrate *kaprov1alpha1.Substrate) error {
 	return nil
 }
 
-func canonicalActuatorKeyForSubstrate(delivery kaprov1alpha1.DeliverySpec, substrate kaprov1alpha1.SubstrateSpec) string {
+func canonicalActuatorKeyForSubstrate(delivery kaprov1alpha1.SubstrateBindingSpec, substrate kaprov1alpha1.SubstrateSpec) string {
 	mode := delivery.Mode
 	if mode == "" {
 		switch substrate.ExecutionMode() {
 		case kaprov1alpha1.ExecutionModeHubPush:
-			mode = kaprov1alpha1.DeliveryModePush
+			mode = kaprov1alpha1.SubstrateModePush
 		case kaprov1alpha1.ExecutionModeSpokePull, kaprov1alpha1.ExecutionModeExternalPull:
-			mode = kaprov1alpha1.DeliveryModePull
+			mode = kaprov1alpha1.SubstrateModePull
 		}
 	}
 	name := runtimeActuatorNameForSubstrate(substrate)
@@ -1312,12 +1312,12 @@ func capturePreviousVersions(target *kaprov1alpha1.TargetExecutionState, mc *kap
 }
 
 func validateTargetTopology(mc *kaprov1alpha1.Cluster, desiredVersions map[string]string) error {
-	if len(desiredVersions) <= 1 || mc.Spec.Delivery.Mode != kaprov1alpha1.DeliveryModePull || mc.Spec.Delivery.SubstrateRef != "flux" {
+	if len(desiredVersions) <= 1 || mc.Spec.Substrate.Mode != kaprov1alpha1.SubstrateModePull || mc.Spec.Substrate.SubstrateRef != "flux" {
 		return nil
 	}
 	for appKey := range desiredVersions {
-		if mc.Spec.Delivery.Parameters["ociRepository."+appKey] == "" {
-			return fmt.Errorf("cluster %s is missing delivery.parameters[%q] required for multi-artifact flux delivery", mc.Name, "ociRepository."+appKey)
+		if mc.Spec.Substrate.Parameters["ociRepository."+appKey] == "" {
+			return fmt.Errorf("cluster %s is missing substrate.parameters[%q] required for multi-artifact flux delivery", mc.Name, "ociRepository."+appKey)
 		}
 	}
 	return nil

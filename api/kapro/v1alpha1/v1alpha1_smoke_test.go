@@ -21,7 +21,7 @@ func TestSchemeRegistersAllNewKinds(t *testing.T) {
 	}
 	// Every CRD's singular Kind we care about.
 	wantKinds := []string{
-		"Approval", "Substrate", "Cluster", "ClusterTemplate",
+		"Approval", "Substrate", "Cluster", "ClusterTemplate", "DeliveryUnit",
 		"Fleet", "Plan", "Plugin", "Policy",
 		"Promotion", "Source", "SubstrateClass", "Trigger",
 	}
@@ -33,13 +33,45 @@ func TestSchemeRegistersAllNewKinds(t *testing.T) {
 	}
 }
 
+func TestDeliveryUnitRoundTripsThroughYAML(t *testing.T) {
+	in := &DeliveryUnit{
+		TypeMeta:   metav1.TypeMeta{APIVersion: "kapro.io/v1alpha1", Kind: "DeliveryUnit"},
+		ObjectMeta: metav1.ObjectMeta{Name: "checkout"},
+		Spec: DeliveryUnitSpec{
+			DefaultFleetRef: "prod",
+			DefaultPlanRef:  "progressive",
+			Source: SourceSpec{
+				Units: []Unit{{Name: "api", Version: "1.2.3"}},
+			},
+			Triggers: []DeliveryUnitTrigger{{
+				Name: "tags",
+				Source: TriggerSource{
+					Type: "oci",
+					OCI:  &OCITriggerSource{Repository: "oci://example/checkout", TagPattern: "v.*"},
+				},
+			}},
+		},
+	}
+	data, err := yaml.Marshal(in)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	var out DeliveryUnit
+	if err := yaml.Unmarshal(data, &out); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if out.Spec.DefaultFleetRef != "prod" || out.Spec.Source.Units[0].Name != "api" {
+		t.Fatalf("DeliveryUnit roundtrip = %#v", out.Spec)
+	}
+}
+
 func TestFleetRoundTripsThroughYAML(t *testing.T) {
 	in := &Fleet{
 		TypeMeta:   metav1.TypeMeta{APIVersion: "kapro.io/v1alpha1", Kind: "Fleet"},
 		ObjectMeta: metav1.ObjectMeta{Name: "checkout"},
 		Spec: FleetSpec{
 			SourceRef: "checkout-catalog",
-			Delivery: DeliverySpec{
+			Substrate: SubstrateBindingSpec{
 				Mode:         "pull",
 				SubstrateRef: "flux",
 			},
@@ -56,8 +88,8 @@ func TestFleetRoundTripsThroughYAML(t *testing.T) {
 	if out.Name != "checkout" {
 		t.Errorf("name lost across round-trip: %q", out.Name)
 	}
-	if out.Spec.Delivery.SubstrateRef != "flux" {
-		t.Errorf("substrateRef lost across round-trip: %q", out.Spec.Delivery.SubstrateRef)
+	if out.Spec.Substrate.SubstrateRef != "flux" {
+		t.Errorf("substrateRef lost across round-trip: %q", out.Spec.Substrate.SubstrateRef)
 	}
 }
 
@@ -99,8 +131,8 @@ func TestDeliveryStagingRoundTripsThroughYAML(t *testing.T) {
 		TypeMeta:   metav1.TypeMeta{APIVersion: "kapro.io/v1alpha1", Kind: "Cluster"},
 		ObjectMeta: metav1.ObjectMeta{Name: "de-prod-01"},
 		Spec: ClusterSpec{
-			Delivery: DeliverySpec{
-				Mode:         DeliveryModePull,
+			Substrate: SubstrateBindingSpec{
+				Mode:         SubstrateModePull,
 				SubstrateRef: "oci",
 				Staging: &DeliveryStagingSpec{
 					Type:          DeliveryStagingTwoPhase,
@@ -132,14 +164,14 @@ func TestDeliveryStagingRoundTripsThroughYAML(t *testing.T) {
 	if err := yaml.Unmarshal(data, &out); err != nil {
 		t.Fatalf("Unmarshal: %v", err)
 	}
-	if out.Spec.Delivery.Staging == nil {
+	if out.Spec.Substrate.Staging == nil {
 		t.Fatal("staging lost across round-trip")
 	}
-	if out.Spec.Delivery.Staging.Type != DeliveryStagingTwoPhase {
-		t.Errorf("staging.type = %q, want %q", out.Spec.Delivery.Staging.Type, DeliveryStagingTwoPhase)
+	if out.Spec.Substrate.Staging.Type != DeliveryStagingTwoPhase {
+		t.Errorf("staging.type = %q, want %q", out.Spec.Substrate.Staging.Type, DeliveryStagingTwoPhase)
 	}
-	if out.Spec.Delivery.Staging.FailurePolicy != DeliveryStagingFailureAbort {
-		t.Errorf("staging.failurePolicy = %q, want %q", out.Spec.Delivery.Staging.FailurePolicy, DeliveryStagingFailureAbort)
+	if out.Spec.Substrate.Staging.FailurePolicy != DeliveryStagingFailureAbort {
+		t.Errorf("staging.failurePolicy = %q, want %q", out.Spec.Substrate.Staging.FailurePolicy, DeliveryStagingFailureAbort)
 	}
 	status := out.Status.Delivery["api"].Staging
 	if status == nil {

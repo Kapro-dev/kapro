@@ -2,6 +2,8 @@ apiVersion: kapro.io/v1alpha1
 kind: Plan
 metadata:
   name: checkout-progressive-kind
+  labels:
+    kapro.io/team: checkout
 spec:
   stages:
     - name: canary

@@ -10,12 +10,12 @@ agents, or plugins still own local reconciliation.
 
 | Situation | Start with | What Kapro creates |
 |---|---|---|
-| New repo, direct Kubernetes apply | `kapro create direct ./promotion-repo --name checkout` | `kubernetes-apply` class/config, Substrate, raw YAML, clusters, Fleet, Plan, and Promotion scaffold. |
-| New repo, Flux or spoke pull delivery | `kapro create flux ./promotion-repo --name checkout` | Flux class/config, Substrate, clusters, Fleet, Plan, Promotion, and Flux starter files. |
-| New repo, Argo CD Applications already planned | `kapro create argo ./promotion-repo --name checkout` | Argo CD class/config, Substrate, clusters, Fleet, Plan, Promotion, and Argo starter Application. |
-| Existing Argo CD repo | `kapro import argo . --out ./kapro-connect --name checkout` | Observe-mode Substrate, Source mappings, and discovery reports. |
-| Existing Flux repo | `kapro import flux . --out ./kapro-connect --name checkout` | Observe-mode Substrate, Source mappings, and discovery reports. |
-| Outbound-only clusters that must pull OCI artifacts | `kapro create oci ./promotion-repo --name checkout` | OCI Substrate, clusters, Fleet, Plan, and Promotion skeleton. |
+| New repo, direct Kubernetes apply | `kapro create direct ./promotion-repo --name checkout` | `kubernetes-apply` class/config, Substrate, raw YAML, clusters, DeliveryUnit, Fleet, Plan, and Promotion scaffold. |
+| New repo, Flux or spoke pull delivery | `kapro create flux ./promotion-repo --name checkout` | Flux class/config, Substrate, clusters, DeliveryUnit, Fleet, Plan, Promotion, and Flux starter files. |
+| New repo, Argo CD Applications already planned | `kapro create argo ./promotion-repo --name checkout` | Argo CD class/config, Substrate, clusters, DeliveryUnit, Fleet, Plan, Promotion, and Argo starter Application. |
+| Existing Argo CD repo | `kapro import argo . --out ./kapro-connect --name checkout` | Observe-mode Substrate, DeliveryUnit source mappings, and discovery reports. |
+| Existing Flux repo | `kapro import flux . --out ./kapro-connect --name checkout` | Observe-mode Substrate, DeliveryUnit source mappings, and discovery reports. |
+| Outbound-only clusters that must pull OCI artifacts | `kapro create oci ./promotion-repo --name checkout` | OCI Substrate, clusters, DeliveryUnit, Fleet, Plan, and Promotion skeleton. |
 
 Use `kapro bootstrap guide` when you want the same decision tree in the
 terminal.
@@ -59,6 +59,7 @@ The generated repository has the first-use objects in dependency order:
 substrates/
 apps/ or substrate-native starter manifests/
 clusters/
+deliveryunits/
 plans/
 fleets/
 promotions/
@@ -74,14 +75,16 @@ kubectl wait --for=condition=Ready substrate/direct --timeout=90s
 kubectl apply --recursive \
   -f ./promotion-repo/apps \
   -f ./promotion-repo/clusters \
+  -f ./promotion-repo/deliveryunits \
   -f ./promotion-repo/plans \
   -f ./promotion-repo/fleets \
   -f ./promotion-repo/promotions
-kubectl get fleets.kapro.io,plans.kapro.io,promotions.kapro.io,promotionruns.runtime.kapro.io,targets.runtime.kapro.io
+kubectl get deliveryunits.kapro.io,fleets.kapro.io,plans.kapro.io,promotions.kapro.io,promotionruns.runtime.kapro.io,targets.runtime.kapro.io
 ```
 
-The user-authored object is `Promotion`. The controller creates
-`PromotionRun` and `Target` records.
+`DeliveryUnit`, `Fleet`, and `Plan` are durable setup intent. `Promotion` is the
+explicit rollout action. The controller creates `PromotionRun` and `Target`
+records.
 
 ## Existing GitOps Adoption Flow
 
@@ -110,7 +113,7 @@ kapro import flux . \
 This generates:
 
 - an observe-mode `Substrate`;
-- a `Source` mapping of deployable units to substrate-native version fields;
+- a `DeliveryUnit` mapping deployable units to substrate-native version fields;
 - `discovery/review-summary.yaml` with adoption-readiness counts and next
   actions;
 - `discovery/*-discovery.yaml` with selected and skipped objects;
@@ -138,6 +141,9 @@ the same:
 
 ```bash
 kapro promote checkout --version v1.2.3
+# Existing GitOps import output does not guess your target set; pass --fleet
+# until you add spec.defaultFleetRef to the generated DeliveryUnit.
+kapro promote checkout --version v1.2.3 --fleet checkout-prod
 kapro diag checkout-v1-2-3
 kapro tree checkout-v1-2-3
 ```
@@ -154,7 +160,7 @@ stamps immutable `PromotionRun` attempts and per-target `Target` records.
 - Live Argo CD Application writes require opt-in labels or annotations.
 - OCI pull delivery uses two-phase staging: server-side dry-run apply for every
   object first, then commit only when the whole staging pass succeeds. The
-  optional `spec.delivery.staging` API currently exposes this conservative
+  optional `spec.substrate.staging` API currently exposes this conservative
   `TwoPhase`/`Abort` contract without changing existing substrate defaults. This
   is validation-atomic before commit, not a Kubernetes transactional rollback:
   commit-phase infrastructure failures are reported and retried rather than

@@ -16,7 +16,7 @@ func (e *ValidationError) Error() string {
 	return fmt.Sprintf("%d validation errors:\n  - %s", len(e.Errors), strings.Join(e.Errors, "\n  - "))
 }
 
-// Validate checks a PromotionSource for common mistakes before source packaging.
+// Validate checks a Source catalog for common mistakes before source packaging.
 // Returns nil if valid, or a *ValidationError with all issues found.
 func Validate(app *kaprov1alpha1.Source) error {
 	var errs []string

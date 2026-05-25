@@ -44,10 +44,10 @@ kapro import argo . --out ./kapro-connect --name checkout
 kapro import flux . --out ./kapro-connect --name checkout
 ```
 
-Observe-first adoption generates Substrate, Source, and discovery review files.
-It does not mutate live Argo CD or Flux objects and it does not push Git
-changes. After review, pass `--take` to generate or apply an Adopt-mode
-Substrate.
+Observe-first adoption generates a Substrate, a DeliveryUnit with source
+mappings, and discovery review files. It does not mutate live Argo CD or Flux
+objects and it does not push Git changes. After review, pass `--take` to
+generate or apply an Adopt-mode Substrate.
 
 ## Samples
 
@@ -99,6 +99,6 @@ promotion intent, gates, approvals, and audit trail across clusters.
 |---|---|---|
 | Try Kapro in a new repo | `kapro create direct|argo|flux|oci` | Fast path with opinionated defaults. |
 | Generate from an explicit profile | `kapro bootstrap generate --profile direct|argo|flux|oci` | Generator/framework surface used by docs, CI, and future template targets. |
-| Connect an existing GitOps repo | `kapro import argo|flux` | Observe-first output with `Source` mappings and discovery reports. |
+| Connect an existing GitOps repo | `kapro import argo|flux` | Observe-first output with DeliveryUnit source mappings and discovery reports. |
 | Create only observe-mode Substrate files | `kapro connect argo|flux` | Substrate-only scaffold for platform teams that want to wire discovery by hand. |
 | Inventory without importing | `kapro discover argo|flux` | Lower-level diagnostic command used by `import`. |

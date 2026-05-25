@@ -64,10 +64,17 @@ spec:
             type: object
           spec:
             description: |-
-              PromotionSpec is the durable intent to deliver a version through a Fleet.
-              It refers to a parent Fleet (which owns source, plan, clusters, delivery)
-              and adds the rollout target (version, scope, optional plan override).
+              PromotionSpec is the explicit action to deliver a DeliveryUnit version
+              through a Fleet. DeliveryUnit owns source/default intent, Fleet owns target
+              clusters and delivery defaults, and Plan owns rollout strategy.
             properties:
+              deliveryUnitRef:
+                description: |-
+                  DeliveryUnitRef is the logical app/workload being promoted. Promotion is
+                  the explicit action boundary; changing DeliveryUnit source/defaults does
+                  not deploy by itself.
+                minLength: 1
+                type: string
               fleetRef:
                 description: FleetRef is the name of the Fleet this intent targets.
                 minLength: 1
@@ -219,11 +226,16 @@ spec:
                     maxItems: 32
                     type: array
                 type: object
+              planRef:
+                description: |-
+                  PlanRef is the primary Plan for this action. When unset, the controller
+                  uses DeliveryUnit.spec.defaultPlanRef, then any explicit Plans entries.
+                type: string
               plans:
                 description: |-
-                  Plans optionally overrides the inline Fleet.spec.plan
-                  for this intent. When unset, the controller derives a single plan ref
-                  from the parent Fleet's inline plan.
+                  Plans optionally defines the plan DAG for this action. When unset, the
+                  controller uses PlanRef, DeliveryUnit.spec.defaultPlanRef, or legacy
+                  Fleet.spec.plan compatibility in that order.
                 items:
                   description: |-
                     PlanRef is one node in the PromotionRun's plan DAG.
@@ -283,6 +295,7 @@ spec:
                   Either Version or at least one Versions entry must be set.
                 type: object
             required:
+            - deliveryUnitRef
             - fleetRef
             type: object
           status:

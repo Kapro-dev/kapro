@@ -16,6 +16,8 @@ apiVersion: kapro.io/v1alpha1
 kind: Plan
 metadata:
   name: ring-deployment
+  labels:
+    kapro.io/team: platform
 spec:
   stages:
     - name: ring0

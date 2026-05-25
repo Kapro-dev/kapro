@@ -35,15 +35,15 @@ var kaproResourceSetGVK = schema.GroupVersionKind{
 	Kind:    "ResourceSet",
 }
 
-// FleetReconciler generates hub-side resources from a Kapro source spec.
+// FleetReconciler generates hub-side target inventory from a Fleet target set.
 // It produces (all on the hub cluster):
 //   - Cluster CRs (one per cluster in the fleet)
-//   - A Plan CR (from Fleet.spec.plan)
-//   - A ResourceSet (Flux Operator) with HelmRelease templates per unit
+//   - optionally a Plan CR from legacy Fleet.spec.plan
+//   - optionally a ResourceSet (Flux Operator) from legacy Fleet source input
 //
-// The ResourceSet contains per-cluster inputs with unit versions and
-// merged Helm values (PromotionSource defaults + overrides). Flux Operator distributes
-// the rendered HelmReleases to spokes. Kapro never writes to spoke clusters.
+// The public-preview authoring path puts source intent on DeliveryUnit and
+// rollout strategy on standalone Plan. Fleet remains the cluster target set
+// and delivery-default source for generated Cluster objects.
 //
 // Version promotion is handled by the FluxOperatorActuator (via PromotionRun),
 // which patches ResourceSet inputs — not by this controller.
@@ -77,30 +77,27 @@ func (r *FleetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 
 	l.Info("reconciling Kapro", "name", kapro.Name)
 
-	source, ok, err := r.resolvePromotionSource(ctx, &kapro)
+	delivery := kapro.Spec.Substrate
+	if delivery.Mode == "" {
+		delivery.Mode = kaprov1alpha1.SubstrateModePull
+	}
+	if delivery.SubstrateRef == "" {
+		delivery.SubstrateRef = "flux"
+	}
+	deliveryPath := resolveFleetDeliveryPath(delivery)
+
+	source, sourceConfigured, err := r.resolvePromotionSource(ctx, &kapro)
 	if err != nil {
 		patch := client.MergeFrom(kapro.DeepCopy())
 		apimeta.SetStatusCondition(&kapro.Status.Conditions, metav1.Condition{
 			Type:               "Ready",
 			Status:             metav1.ConditionFalse,
 			ObservedGeneration: kapro.Generation,
-			Reason:             "PromotionSourceNotFound",
-			Message:            fmt.Sprintf("PromotionSource %q not found: %v", kapro.Spec.SourceRef, err),
+			Reason:             "SourceNotFound",
+			Message:            fmt.Sprintf("Source %q not found: %v", kapro.Spec.SourceRef, err),
 		})
 		_ = r.Status().Patch(ctx, &kapro, patch)
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
-	}
-	if !ok {
-		patch := client.MergeFrom(kapro.DeepCopy())
-		apimeta.SetStatusCondition(&kapro.Status.Conditions, metav1.Condition{
-			Type:               "Ready",
-			Status:             metav1.ConditionFalse,
-			ObservedGeneration: kapro.Generation,
-			Reason:             "SourceNotConfigured",
-			Message:            "set spec.source for the single-object path or spec.sourceRef for a separate PromotionSource",
-		})
-		_ = r.Status().Patch(ctx, &kapro, patch)
-		return ctrl.Result{}, nil
 	}
 
 	var inventory []string
@@ -119,15 +116,6 @@ func (r *FleetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		cluster.KubeconfigSecret = secretName
 	}
 
-	delivery := kapro.Spec.Delivery
-	if delivery.Mode == "" {
-		delivery.Mode = kaprov1alpha1.DeliveryModePull
-	}
-	if delivery.SubstrateRef == "" {
-		delivery.SubstrateRef = "flux"
-	}
-	deliveryPath := resolveFleetDeliveryPath(delivery)
-
 	// 2. Generate Clusters on the hub.
 	for _, cluster := range kapro.Spec.Clusters {
 		clusterDelivery := delivery
@@ -136,13 +124,13 @@ func (r *FleetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			clusterDelivery.Parameters = map[string]string{}
 		}
 		if clusterDelivery.SubstrateRef == "flux" {
-			if clusterDelivery.Mode == kaprov1alpha1.DeliveryModePush {
+			if clusterDelivery.Mode == kaprov1alpha1.SubstrateModePush {
 				setDefaultParam(clusterDelivery.Parameters, "resourceSet", kapro.Name+"-workloads")
 				setDefaultParam(clusterDelivery.Parameters, "namespace", "flux-system")
 				setDefaultParam(clusterDelivery.Parameters, "inputField", "version")
 				setDefaultParam(clusterDelivery.Parameters, "tenantField", "tenant")
 			}
-			if clusterDelivery.Mode == kaprov1alpha1.DeliveryModePull {
+			if clusterDelivery.Mode == kaprov1alpha1.SubstrateModePull {
 				setDefaultParam(clusterDelivery.Parameters, "namespace", "flux-system")
 				setDefaultParam(clusterDelivery.Parameters, "ociRepository", kapro.Name+"-bundle")
 			}
@@ -154,7 +142,7 @@ func (r *FleetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 				Labels: cluster.Labels,
 			},
 			Spec: kaprov1alpha1.ClusterSpec{
-				Delivery: clusterDelivery,
+				Substrate: clusterDelivery,
 			},
 		}
 		if err := r.Patch(ctx, mc,
@@ -167,16 +155,18 @@ func (r *FleetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		inventory = append(inventory, "Cluster/"+cluster.Name)
 	}
 
-	// 2. Generate Plan on the hub.
-	promotionplan := r.buildPromotionPlan(&kapro)
-	if err := r.Patch(ctx, promotionplan,
-		client.Apply, //nolint:staticcheck
-		client.FieldOwner("kapro-controller"),
-		client.ForceOwnership,
-	); err != nil {
-		return ctrl.Result{}, fmt.Errorf("apply Plan: %w", err)
+	// 2. Generate a compatibility Plan only when legacy Fleet.spec.plan is set.
+	if len(kapro.Spec.Plan.Stages) > 0 {
+		promotionplan := r.buildPromotionPlan(&kapro)
+		if err := r.Patch(ctx, promotionplan,
+			client.Apply, //nolint:staticcheck
+			client.FieldOwner("kapro-controller"),
+			client.ForceOwnership,
+		); err != nil {
+			return ctrl.Result{}, fmt.Errorf("apply Plan: %w", err)
+		}
+		inventory = append(inventory, "Plan/"+InlinePromotionPlanName(kapro.Name))
 	}
-	inventory = append(inventory, "Plan/"+InlinePromotionPlanName(kapro.Name))
 
 	switch deliveryPath {
 	case fleetDeliveryPathFluxSpoke:
@@ -184,41 +174,47 @@ func (r *FleetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		// Source packaging + push is done by CI via `kapro source package --push`.
 		// The operator only creates the spoke-side Flux resources (OCIRepository + wave Kustomizations).
 		primaryVersion := promotionSourcePrimaryVersion(source)
-		if primaryVersion != "" {
+		if sourceConfigured && primaryVersion != "" {
 			bootstrapResults := r.bootstrapSpokesParallel(ctx, &kapro, source, primaryVersion)
 			for clusterName, err := range bootstrapResults {
 				if err != nil {
 					l.Error(err, "spoke bootstrap failed (skipping)", "cluster", clusterName)
 				}
 			}
+			inventory = append(inventory, "SpokeBootstrap/"+kapro.Name)
+		} else if sourceConfigured {
+			l.Info("skipping spoke bootstrap: Source has no packaged unit version", "source", source.Name)
 		} else {
-			l.Info("skipping spoke bootstrap: PromotionSource has no packaged unit version", "source", source.Name)
+			l.Info("skipping spoke bootstrap: Fleet has no legacy source; DeliveryUnit/Promotion own source-driven rollout")
 		}
-		inventory = append(inventory, "SpokeBootstrap/"+kapro.Name)
 	case fleetDeliveryPathFluxOperator:
 		// 3b. Push mode: generate ResourceSet on the hub (Flux Operator distributes to spokes).
-		rs := r.buildResourceSet(&kapro, source)
-		if err := r.Patch(ctx, rs,
-			client.Apply, //nolint:staticcheck // SA1019: deprecated but replacement needs larger refactor
-			client.FieldOwner("kapro-controller"),
-			client.ForceOwnership,
-		); err != nil {
-			if isNoMatchError(err) {
-				l.Info("Flux Operator CRD (ResourceSet) not found — install Flux Operator on the hub")
-				patch := client.MergeFrom(kapro.DeepCopy())
-				apimeta.SetStatusCondition(&kapro.Status.Conditions, metav1.Condition{
-					Type:               "Ready",
-					Status:             metav1.ConditionFalse,
-					ObservedGeneration: kapro.Generation,
-					Reason:             "FluxOperatorNotInstalled",
-					Message:            "ResourceSet CRD not found. Install Flux Operator on the hub cluster.",
-				})
-				_ = r.Status().Patch(ctx, &kapro, patch)
-				return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		if sourceConfigured {
+			rs := r.buildResourceSet(&kapro, source)
+			if err := r.Patch(ctx, rs,
+				client.Apply, //nolint:staticcheck // SA1019: deprecated but replacement needs larger refactor
+				client.FieldOwner("kapro-controller"),
+				client.ForceOwnership,
+			); err != nil {
+				if isNoMatchError(err) {
+					l.Info("Flux Operator CRD (ResourceSet) not found — install Flux Operator on the hub")
+					patch := client.MergeFrom(kapro.DeepCopy())
+					apimeta.SetStatusCondition(&kapro.Status.Conditions, metav1.Condition{
+						Type:               "Ready",
+						Status:             metav1.ConditionFalse,
+						ObservedGeneration: kapro.Generation,
+						Reason:             "FluxOperatorNotInstalled",
+						Message:            "ResourceSet CRD not found. Install Flux Operator on the hub cluster.",
+					})
+					_ = r.Status().Patch(ctx, &kapro, patch)
+					return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+				}
+				return ctrl.Result{}, fmt.Errorf("apply ResourceSet: %w", err)
 			}
-			return ctrl.Result{}, fmt.Errorf("apply ResourceSet: %w", err)
+			inventory = append(inventory, "ResourceSet/"+kapro.Name+"-workloads")
+		} else {
+			l.Info("skipping ResourceSet generation: Fleet has no legacy source; DeliveryUnit/Promotion own source-driven rollout")
 		}
-		inventory = append(inventory, "ResourceSet/"+kapro.Name+"-workloads")
 	case fleetDeliveryPathNative:
 		inventory = append(inventory, "Substrate/"+delivery.SubstrateRef)
 	}
@@ -226,7 +222,7 @@ func (r *FleetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	// 4. Sync Cluster status from HelmRelease status (push model observability).
 	// For spoke-local mode, this reads from spoke Flux resources directly.
 	convergedCount := int32(0)
-	if deliveryPath == fleetDeliveryPathFluxSpoke || deliveryPath == fleetDeliveryPathFluxOperator {
+	if sourceConfigured && (deliveryPath == fleetDeliveryPathFluxSpoke || deliveryPath == fleetDeliveryPathFluxOperator) {
 		for _, cluster := range kapro.Spec.Clusters {
 			converged := r.syncFleetClusterStatus(ctx, &kapro, source, cluster)
 			if converged {
@@ -243,7 +239,11 @@ func (r *FleetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	patch := client.MergeFrom(kapro.DeepCopy())
 	kapro.Status.ClusterCount = int32(len(kapro.Spec.Clusters))
 	kapro.Status.ConvergedCount = convergedCount
-	kapro.Status.UnitCount = int32(len(source.Spec.Units))
+	if source != nil {
+		kapro.Status.UnitCount = int32(len(source.Spec.Units))
+	} else {
+		kapro.Status.UnitCount = 0
+	}
 	kapro.Status.Version = primaryVersion
 	kapro.Status.ObservedGeneration = kapro.Generation
 	kapro.Status.Inventory = inventory
@@ -252,7 +252,7 @@ func (r *FleetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		Status:             metav1.ConditionTrue,
 		ObservedGeneration: kapro.Generation,
 		Reason:             "ReconcileSuccess",
-		Message:            kaproReadyMessage(deliveryPath, convergedCount, len(kapro.Spec.Clusters), primaryVersion),
+		Message:            kaproReadyMessage(deliveryPath, sourceConfigured, convergedCount, len(kapro.Spec.Clusters), primaryVersion),
 	})
 	if err := r.Status().Patch(ctx, &kapro, patch); err != nil {
 		return ctrl.Result{}, fmt.Errorf("patch Kapro status: %w", err)
@@ -323,7 +323,7 @@ func InlinePromotionPlanName(kaproName string) string {
 }
 
 // buildResourceSet creates a Flux Operator ResourceSet on the hub.
-// From the PromotionSource unit spec, it generates:
+// From the Source unit spec, it generates:
 //   - inputs[]: one entry per cluster (tenant, kubeconfig_secret, per-unit versions)
 //   - resources[]: HelmRepositories + HelmReleases with dependsOn, timeout, retries, prune
 //
@@ -591,8 +591,8 @@ func promotionSourcePrimaryVersion(source *kaprov1alpha1.Source) string {
 	return ""
 }
 
-func kaproReadyMessage(path fleetDeliveryPath, converged int32, total int, version string) string {
-	if path == fleetDeliveryPathNative {
+func kaproReadyMessage(path fleetDeliveryPath, sourceConfigured bool, converged int32, total int, version string) string {
+	if path == fleetDeliveryPathNative || !sourceConfigured {
 		return fmt.Sprintf("%d/%d clusters configured; promotion convergence is tracked on Targets", total, total)
 	}
 	if version == "" {
@@ -613,9 +613,9 @@ func fleetDeliveryPathForFleet(kapro *kaprov1alpha1.Fleet) fleetDeliveryPath {
 	if kapro == nil {
 		return fleetDeliveryPathFluxSpoke
 	}
-	delivery := kapro.Spec.Delivery
+	delivery := kapro.Spec.Substrate
 	if delivery.Mode == "" {
-		delivery.Mode = kaprov1alpha1.DeliveryModePull
+		delivery.Mode = kaprov1alpha1.SubstrateModePull
 	}
 	if delivery.SubstrateRef == "" {
 		delivery.SubstrateRef = "flux"
@@ -623,9 +623,9 @@ func fleetDeliveryPathForFleet(kapro *kaprov1alpha1.Fleet) fleetDeliveryPath {
 	return resolveFleetDeliveryPath(delivery)
 }
 
-func resolveFleetDeliveryPath(delivery kaprov1alpha1.DeliverySpec) fleetDeliveryPath {
+func resolveFleetDeliveryPath(delivery kaprov1alpha1.SubstrateBindingSpec) fleetDeliveryPath {
 	if delivery.Mode == "" {
-		delivery.Mode = kaprov1alpha1.DeliveryModePull
+		delivery.Mode = kaprov1alpha1.SubstrateModePull
 	}
 	if delivery.SubstrateRef == "" {
 		delivery.SubstrateRef = "flux"
@@ -633,13 +633,13 @@ func resolveFleetDeliveryPath(delivery kaprov1alpha1.DeliverySpec) fleetDelivery
 	if delivery.SubstrateRef != "flux" {
 		return fleetDeliveryPathNative
 	}
-	if delivery.Mode == kaprov1alpha1.DeliveryModePull {
+	if delivery.Mode == kaprov1alpha1.SubstrateModePull {
 		return fleetDeliveryPathFluxSpoke
 	}
 	return fleetDeliveryPathFluxOperator
 }
 
-// mergeValues resolves PromotionSource defaults + matching overrides for a specific cluster.
+// mergeValues resolves Source defaults + matching overrides for a specific cluster.
 // Returns a JSON string of the merged values, or "" if no values apply.
 func (r *FleetReconciler) mergeValues(source *kaprov1alpha1.Source, clusterName string, clusterLabels map[string]string) string {
 	// Start with defaults.
@@ -1179,7 +1179,7 @@ func (r *FleetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		// Cluster.status.conditions[Ready] flips drive Phase=Unreachable
 		// in the status sync step. Without this watch the heartbeat
 		// reconciler's Ready=False reason=Unreachable transition would not
-		// surface as Phase=Unreachable until an unrelated Kapro/PromotionSource
+		// surface as Phase=Unreachable until an unrelated Fleet/Source
 		// event fired. Predicate filters to Ready-condition transitions only —
 		// no feedback loop with our own status patches (which don't touch
 		// conditions[Ready]).
@@ -1190,7 +1190,7 @@ func (r *FleetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-// kaproSourceToKapro maps a PromotionSource change to the Kapro(s) that reference it.
+// kaproSourceToKapro maps a Source change to the Fleet(s) that reference it.
 func (r *FleetReconciler) kaproSourceToKapro(ctx context.Context, obj client.Object) []reconcile.Request {
 	source, ok := obj.(*kaprov1alpha1.Source)
 	if !ok {

@@ -11,7 +11,7 @@ import (
 // Registration binds one runtime registry key to an actuator implementation.
 type Registration struct {
 	Name         string
-	Mode         kaprov1alpha1.DeliveryMode
+	Mode         kaprov1alpha1.SubstrateMode
 	Capabilities Capabilities
 	Actuator     Actuator
 }
@@ -164,7 +164,7 @@ func normalizeRegistration(reg Registration) (string, Registration, error) {
 	}
 	reg.Capabilities = reg.Capabilities.Normalize()
 	if reg.Mode != "" && len(reg.Capabilities.Modes) == 0 {
-		reg.Capabilities.Modes = []kaprov1alpha1.DeliveryMode{reg.Mode}
+		reg.Capabilities.Modes = []kaprov1alpha1.SubstrateMode{reg.Mode}
 	}
 	key := reg.RegistryKey()
 	if key == "" || key == "/" {
@@ -172,7 +172,7 @@ func normalizeRegistration(reg Registration) (string, Registration, error) {
 	}
 	// RegistryKey() falls back to "<mode>/<adapter>". When Name is empty
 	// and mode is empty too, we'd produce "/argo" — a key that never
-	// matches DeliverySpec.RegistryKey() at resolution time. Reject the
+	// matches SubstrateBindingSpec.RegistryKey() at resolution time. Reject the
 	// leading-slash form rather than silently registering an unreachable
 	// actuator.
 	if reg.Name == "" && len(key) > 0 && key[0] == '/' {

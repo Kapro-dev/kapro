@@ -46,11 +46,12 @@ cluster provisioner, or secret store.
 
 | Kind | Role |
 |---|---|
-| `Fleet` | Fleet setup root: source, delivery defaults, clusters, and embedded stage plan. |
-| `Source` | Reusable catalog of deployable units and substrate write targets. |
+| `DeliveryUnit` | App/workload source mappings, trigger intent, and default fleet/plan. |
+| `Fleet` | Target set: clusters and delivery defaults. |
+| `Source` | Controller-derived source mapping object from a DeliveryUnit. |
 | `Substrate` | Delivery driver configuration for Flux, Argo CD, OCI, direct apply, or plugin-backed execution. |
-| `Plan` | Stage order, target selection, and gates generated from or referenced by a Fleet. |
-| `Promotion` | User-authored rollout intent. |
+| `Plan` | Stage order, target selection, and gates. |
+| `Promotion` | Explicit rollout action. |
 | `PromotionRun` | Controller-authored execution attempt and audit record. |
 | `Target` | Per-cluster, per-stage runtime state. |
 | `Cluster` | A workload cluster known to the hub. |

@@ -3,19 +3,10 @@ kind: Fleet
 metadata:
   name: checkout-direct
   labels:
+    kapro.io/unit: checkout-direct
     kapro.io/team: platform
 spec:
-  source:
-    substrateRef: direct
-    defaults:
-      targetNamespace: default
-    units:
-      - name: checkout-direct
-        substrateKind: KubernetesManifest
-        sourcePath: apps/checkout-direct/deployment.yaml
-        versionField: spec.template.spec.containers[0].image
-        version: ghcr.io/example/checkout-direct:0.1.0
-  delivery:
+  substrate:
     mode: push
     substrateRef: direct
     parameters:
@@ -30,14 +21,3 @@ spec:
     - name: prod-eu
       labels:
         kapro.io/stage: production
-
-  plan:
-    stages:
-      - name: canary
-        selector:
-          kapro.io/stage: canary
-      - name: production
-        selector:
-          kapro.io/stage: production
-        dependsOn:
-          - stage: canary

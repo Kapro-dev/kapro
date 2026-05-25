@@ -41,9 +41,9 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          Fleet is the single entry point for fleet delivery. Users define or reference
-          source units, select a substrate profile, and define clusters and promotion
-          stages. Substrate adapters own Flux, Argo, or other delivery-system details.
+          Fleet is the target-set entry point for fleet delivery. Users select substrate
+          defaults and define clusters. DeliveryUnit owns source shape, Plan owns
+          rollout strategy, and Promotion remains the explicit action boundary.
         properties:
           apiVersion:
             description: |-
@@ -63,9 +63,8 @@ spec:
           metadata:
             type: object
           spec:
-            description: |-
-              FleetSpec defines the desired source, delivery, target clusters, and stage
-              plan for one fleet.
+            description: FleetSpec defines substrate defaults and target clusters
+              for one fleet.
             properties:
               clusters:
                 description: Clusters defines the target clusters in the fleet.
@@ -120,58 +119,11 @@ spec:
                   type: object
                 minItems: 1
                 type: array
-              delivery:
-                description: Delivery selects the substrate-neutral fleet delivery
-                  profile.
-                properties:
-                  mode:
-                    default: pull
-                    description: Mode controls who performs delivery.
-                    enum:
-                    - push
-                    - pull
-                    type: string
-                  parameters:
-                    additionalProperties:
-                      type: string
-                    description: |-
-                      Parameters are opaque substrate-specific settings, following the
-                      StorageClass.parameters pattern. Fleet core does not interpret them.
-                    type: object
-                  staging:
-                    description: |-
-                      Staging declares optional pre-commit safety semantics for substrates that
-                      support staging. When omitted, existing substrate defaults are preserved.
-                      The built-in OCI pull substrate already uses TwoPhase/Abort behavior.
-                    properties:
-                      failurePolicy:
-                        default: Abort
-                        description: |-
-                          FailurePolicy selects how dry-run failures affect commit. Abort is the
-                          only supported policy and means no object is committed when any staged
-                          object fails validation.
-                        enum:
-                        - Abort
-                        type: string
-                      type:
-                        default: TwoPhase
-                        description: Type selects the staging strategy. TwoPhase is
-                          the only supported value.
-                        enum:
-                        - TwoPhase
-                        type: string
-                    type: object
-                  substrateRef:
-                    description: |-
-                      SubstrateRef is the Substrate name. Built-in profiles commonly use
-                      "flux" or "argo"; external profiles may use any platform-defined name.
-                    type: string
-                required:
-                - mode
-                - substrateRef
-                type: object
               plan:
-                description: Plan defines the progressive delivery stages.
+                description: |-
+                  Plan is a compatibility hook for legacy inline rollout stages. New
+                  manifests should use a standalone Plan and reference it from Promotion or
+                  DeliveryUnit defaults.
                 properties:
                   stages:
                     description: Stages defines the progressive delivery wave ordering.
@@ -881,8 +833,9 @@ spec:
                 - url
                 type: object
               source:
-                description: Source defines deployable units inline for the single-object
-                  quickstart path.
+                description: |-
+                  Source is a compatibility hook for legacy single-object packaging
+                  workflows. New manifests should use DeliveryUnit.spec.source instead.
                 properties:
                   defaults:
                     description: Defaults are inherited by every unit unless overridden.
@@ -1008,10 +961,11 @@ spec:
                     description: |-
                       SubstrateRef is the Substrate this source is normally discovered from
                       or packaged for. Fleet uses it as metadata; delivery still comes from
-                      Fleet.spec.delivery and Cluster.spec.delivery.
+                      Fleet.spec.substrate and Cluster.spec.substrate.
                     type: string
                   units:
-                    description: Units defines the native deployable units Fleet promotes.
+                    description: Units defines the native deployable units DeliveryUnit/Promotion
+                      moves.
                     items:
                       description: |-
                         Unit is one deployable unit within a Source.
@@ -1039,7 +993,7 @@ spec:
                             type: string
                           type: array
                         name:
-                          description: Name is the stable Fleet unit identifier.
+                          description: Name is the stable delivery unit identifier.
                           type: string
                         namespace:
                           description: Namespace is the substrate-native object namespace
@@ -1061,7 +1015,7 @@ spec:
                           type: integer
                         sourcePath:
                           description: |-
-                            SourcePath is the repo-relative file path Fleet updates for existing
+                            SourcePath is the repo-relative file path Kapro updates for existing
                             GitOps promotion. It is required for file-backed units whose
                             VersionField does not already include a file path.
                           type: string
@@ -1124,7 +1078,7 @@ spec:
                           type: string
                         versionField:
                           description: |-
-                            VersionField is the substrate-native field Fleet changes for this unit,
+                            VersionField is the substrate-native field Kapro changes for this unit,
                             for example spec.source.targetRevision for Argo CD Applications.
                           type: string
                         wave:
@@ -1144,22 +1098,69 @@ spec:
                 type: object
               sourceRef:
                 description: |-
-                  SourceRef is the optional name of a separate Source that defines units to
-                  deploy. Use Source for the inline single-object path; use SourceRef when
-                  teams share a source catalog across multiple Fleet objects.
+                  SourceRef is a compatibility hook for legacy Fleet-packaged workflows.
+                  The public-preview authoring path puts source intent on DeliveryUnit and
+                  lets Kapro derive Source objects from that layer.
                 type: string
+              substrate:
+                description: |-
+                  Substrate selects the substrate-neutral defaults copied to
+                  generated Cluster objects.
+                properties:
+                  mode:
+                    default: pull
+                    description: Mode controls where substrate execution happens.
+                    enum:
+                    - push
+                    - pull
+                    type: string
+                  parameters:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      Parameters are opaque substrate-specific settings, following the
+                      StorageClass.parameters pattern. Fleet core does not interpret them.
+                    type: object
+                  staging:
+                    description: |-
+                      Staging declares optional pre-commit safety semantics for substrates that
+                      support staging. When omitted, existing substrate defaults are preserved.
+                      The built-in OCI pull substrate already uses TwoPhase/Abort behavior.
+                    properties:
+                      failurePolicy:
+                        default: Abort
+                        description: |-
+                          FailurePolicy selects how dry-run failures affect commit. Abort is the
+                          only supported policy and means no object is committed when any staged
+                          object fails validation.
+                        enum:
+                        - Abort
+                        type: string
+                      type:
+                        default: TwoPhase
+                        description: Type selects the staging strategy. TwoPhase is
+                          the only supported value.
+                        enum:
+                        - TwoPhase
+                        type: string
+                    type: object
+                  substrateRef:
+                    description: |-
+                      SubstrateRef is the Substrate name. Built-in profiles commonly use
+                      "flux" or "argo"; external profiles may use any platform-defined name.
+                    type: string
+                required:
+                - mode
+                - substrateRef
+                type: object
               suspended:
                 default: false
                 description: Suspended pauses Fleet reconciliation.
                 type: boolean
             required:
             - clusters
-            - delivery
-            - plan
+            - substrate
             type: object
-            x-kubernetes-validations:
-            - message: exactly one of sourceRef or source is required
-              rule: (has(self.sourceRef) && size(self.sourceRef) > 0) != has(self.source)
           status:
             description: FleetStatus defines the observed state of Fleet.
             properties:

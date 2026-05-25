@@ -331,6 +331,9 @@ func (r *PromotionRunReconciler) promotionTargetFromStatus(promotionrun *kaproru
 		},
 		Status: kaprov1alpha1.TargetStatus{TargetExecutionState: target},
 	}
+	if promotionrun.Spec.DeliveryUnitRef != "" {
+		rt.Labels[kaprov1alpha1.LabelUnit] = promotionrun.Spec.DeliveryUnitRef
+	}
 	if err := ctrl.SetControllerReference(promotionrun, rt, r.Scheme); err == nil {
 		return rt
 	}

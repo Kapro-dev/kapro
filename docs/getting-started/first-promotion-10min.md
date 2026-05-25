@@ -49,25 +49,27 @@ When working from a local checkout before the release is published, use
 
 ## 2. Apply A Minimal Hub Config
 
-The quickstart proves the hub API path: Substrate, Fleet, generated Cluster and
-Plan records, Promotion intent, and controller-owned runtime objects. Pull-mode
+The quickstart proves the hub API path: Substrate, DeliveryUnit, Fleet, Plan,
+Promotion intent, and controller-owned runtime objects. Pull-mode
 examples still need reachable registries and spoke delivery wiring before they
 can prove real workload convergence.
 
 ```bash
 kubectl apply -f examples/quickstart/substrates/flux.yaml
+kubectl apply -f examples/quickstart/deliveryunit.yaml
+kubectl apply -f examples/quickstart/plan.yaml
 kubectl apply -f examples/quickstart/kapro.yaml
 ```
 
 Expected:
 
 ```bash
-kubectl get substrates,fleets,plans
+kubectl get substrates,deliveryunits,fleets,plans
 ```
 
-shows one `Substrate`, one `Fleet`, and one generated `Plan`. The example
-`Fleet` also generates two synthetic `Cluster` objects
-from `spec.clusters`.
+shows one `Substrate`, one `DeliveryUnit`, one `Fleet`, and one `Plan`. The
+example `Fleet` also generates two synthetic `Cluster` objects from
+`spec.clusters`.
 
 ## 3. Add Or Confirm Targets
 

@@ -68,7 +68,7 @@ func newDiscoverFluxCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&opts.OutPath, "out", "kapro-connect", "Output directory for generated Kapro files")
-	cmd.Flags().StringVar(&opts.Name, "name", "flux", "Substrate and Source name")
+	cmd.Flags().StringVar(&opts.Name, "name", "flux", "Substrate and DeliveryUnit name")
 	cmd.Flags().StringVar(&opts.Namespace, "namespace", "flux-system", "Flux namespace")
 	cmd.Flags().StringVar(&opts.Selector, "selector", "kapro.io/import=true", "Label selector for imported substrate objects")
 	cmd.Flags().StringVar(&opts.Revision, "revision", "", "Git branch/tag/SHA when discovering a remote repository URL")
@@ -76,7 +76,7 @@ func newDiscoverFluxCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&opts.ScanAll, "scan-all", false, "Scan all tracked YAML/JSON files instead of GitOps path prefixes")
 	cmd.Flags().BoolVar(&opts.Cache, "cache", true, "Reuse discovery cache for unchanged Git blobs")
 	cmd.Flags().IntVar(&opts.MaxFiles, "max-files", defaultArgoDiscoveryMaxFiles, "Maximum tracked YAML/JSON candidate files to parse (0 = unlimited)")
-	cmd.Flags().IntVar(&opts.MaxUnits, "max-units", defaultArgoDiscoveryMaxUnits, "Maximum Source units to generate (0 = unlimited)")
+	cmd.Flags().IntVar(&opts.MaxUnits, "max-units", defaultArgoDiscoveryMaxUnits, "Maximum source mapping units to generate (0 = unlimited)")
 	cmd.Flags().BoolVar(&opts.Force, "force", false, "Overwrite existing generated files")
 	return cmd
 }
@@ -121,7 +121,7 @@ func runFluxDiscover(opts fluxDiscoverOptions) error {
 	}
 	files := map[string]string{
 		filepath.Join("substrates", opts.Name+discoverSubstrateFileSuffix(opts.Take)+".yaml"): renderFluxDiscoverSubstrate(opts, matchLabels),
-		filepath.Join("sources", opts.Name+".yaml"):                                           renderFluxDiscoverSource(opts, result),
+		filepath.Join("deliveryunits", opts.Name+".yaml"):                                     renderFluxDiscoverDeliveryUnit(opts, result),
 		filepath.Join("discovery", "flux-discovery.yaml"):                                     renderFluxDiscoveryReport(result),
 		filepath.Join("discovery", "kapro-git-map.yaml"):                                      renderFluxGitAdoptionMap(opts, result),
 		filepath.Join("discovery", "review-summary.yaml"):                                     renderDiscoveryReviewSummary("flux", opts.Name, result.RepoPath, result.SelectedUnits, result.SkippedObjects, result.Errors),
@@ -136,7 +136,7 @@ func runFluxDiscover(opts fluxDiscoverOptions) error {
 		}
 	}
 	summary := confidenceSummary(result.SelectedUnits)
-	fmt.Fprintf(os.Stderr, "Discovered %d Flux objects and %d Source units from %s (confidence: high=%d medium=%d needs-review=%d)\n",
+	fmt.Fprintf(os.Stderr, "Discovered %d Flux objects and %d source mapping units from %s (confidence: high=%d medium=%d needs-review=%d)\n",
 		len(result.Objects), len(result.SelectedUnits), opts.RepoPath, summary.High, summary.Medium, summary.NeedsReview)
 	return nil
 }
@@ -172,7 +172,7 @@ func discoverFluxRepo(root string, opts argoDiscoveryScanOptions) (fluxDiscovery
 	}
 	result.SelectedUnits = dedupeUnits(result.SelectedUnits)
 	if opts.MaxUnits > 0 && len(result.SelectedUnits) > opts.MaxUnits {
-		return result, fmt.Errorf("discovery found %d Source units, above --max-units=%d; narrow --path-prefix or review with a higher limit", len(result.SelectedUnits), opts.MaxUnits)
+		return result, fmt.Errorf("discovery found %d source mapping units, above --max-units=%d; narrow --path-prefix or review with a higher limit", len(result.SelectedUnits), opts.MaxUnits)
 	}
 	sort.Slice(result.Objects, func(i, j int) bool {
 		if result.Objects[i].Kind == result.Objects[j].Kind {
@@ -521,27 +521,31 @@ spec:
 %s`, opts.Name, opts.Namespace, managementPolicy, renderYAMLMap(labels, 8))
 }
 
-func renderFluxDiscoverSource(opts fluxDiscoverOptions, result fluxDiscoveryResult) string {
+func renderFluxDiscoverDeliveryUnit(opts fluxDiscoverOptions, result fluxDiscoveryResult) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, `apiVersion: kapro.io/v1alpha1
-kind: Source
+kind: DeliveryUnit
 metadata:
   name: %s
+  labels:
+    kapro.io/unit: %s
+    kapro.io/managed-by: kapro
 spec:
-  substrateRef: %s
-  units:
-`, opts.Name, opts.Name)
+  source:
+    substrateRef: %s
+    units:
+`, opts.Name, opts.Name, opts.Name)
 	for _, unit := range result.SelectedUnits {
 		namespace := firstNonEmpty(unit.Namespace, opts.Namespace)
-		fmt.Fprintf(&b, `    - name: %s
-      substrateKind: %s
-      namespace: %s
-      sourcePath: %s
-      versionField: %s
+		fmt.Fprintf(&b, `      - name: %s
+        substrateKind: %s
+        namespace: %s
+        sourcePath: %s
+        versionField: %s
 `, unit.Name, unit.SubstrateKind, namespace, unit.SourcePath, unit.VersionField)
 	}
 	if len(result.SelectedUnits) == 0 {
-		b.WriteString("    - name: TODO\n      substrateKind: GitYAMLField\n      namespace: flux-system\n      sourcePath: path/to/flux-resource.yaml\n      versionField: spec.ref.tag\n")
+		b.WriteString("      - name: TODO\n        substrateKind: GitYAMLField\n        namespace: flux-system\n        sourcePath: path/to/flux-resource.yaml\n        versionField: spec.ref.tag\n")
 	}
 	return b.String()
 }
@@ -571,7 +575,7 @@ func renderFluxGitAdoptionMap(opts fluxDiscoverOptions, result fluxDiscoveryResu
 	fmt.Fprintf(&b, `schemaVersion: kapro.io/git-adoption/v1alpha1
 name: %s
 repoPath: %s
-sourceRef: %s
+deliveryUnitRef: %s
 units:
 `, opts.Name, result.RepoPath, opts.Name)
 	if len(result.SelectedUnits) == 0 {
@@ -608,16 +612,16 @@ kubectl get substrate %s -o yaml
 `+"```"+`
 
 Review `+"`discovery/review-summary.yaml`"+`, `+"`discovery/flux-discovery.yaml`"+`,
-`+"`discovery/kapro-git-map.yaml`"+`, and `+"`sources/%s.yaml`"+` before switching the Substrate from
+`+"`discovery/kapro-git-map.yaml`"+`, and `+"`deliveryunits/%s.yaml`"+` before switching the Substrate from
 `+"`Observe`"+` to `+"`Adopt`"+`.
 
 Use the generated source mapping to update Git-native version fields:
 
 `+"```bash"+`
-kapro source apply --repo . --source sources/%s.yaml --set unit=revision
+kapro source apply --repo . --source deliveryunits/%s.yaml --set unit=revision
 `+"```"+`
 
-Kapro discovered %d Flux objects and %d Source units. Flux remains the owner
+Kapro discovered %d Flux objects and %d source mapping units. Flux remains the owner
 of source credentials, reconciliation, inventory, drift correction, and local
 rollout behavior.
 `, opts.Name, opts.Name, opts.Name, opts.Name, len(result.Objects), len(result.SelectedUnits))

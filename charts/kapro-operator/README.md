@@ -99,7 +99,7 @@ helm upgrade --install kapro \
   --namespace kapro-system \
   --create-namespace \
   --set pluginGateway.enabled=true \
-  --set controllers='{fleet,plan,promotion,promotionrun,cluster,substrateclass,substrate,plugin}'
+  --set controllers='{deliveryunit,fleet,plan,promotion,promotionrun,cluster,substrateclass,substrate,plugin}'
 ```
 
 Then install your plugin service and apply a registration, for example:
@@ -111,8 +111,8 @@ kubectl apply -f examples/plugins/slo-gate-registration.yaml
 ## Preview Features
 
 The default install runs the ADR-0010 core controllers plus the 0.6 substrate
-readiness controllers: `fleet`, `plan`, `promotion`, `promotionrun`, `cluster`,
-`substrateclass`, and `substrate`. The `target` controller starts implicitly
+readiness controllers: `deliveryunit`, `fleet`, `plan`, `promotion`,
+`promotionrun`, `cluster`, `substrateclass`, and `substrate`. The `target` controller starts implicitly
 whenever `promotionrun` is enabled.
 
 Preview surfaces are explicit opt-ins or spec-only APIs:

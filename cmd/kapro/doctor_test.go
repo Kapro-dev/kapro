@@ -65,8 +65,8 @@ func TestDoctorReportFailsMissingPullSecret(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "checkout"},
 		Spec: kaprov1alpha1.FleetSpec{
 			Registry: kaprov1alpha1.KaproRegistry{URL: "oci://registry.example.com/platform", SecretRef: "registry-auth"},
-			Delivery: kaprov1alpha1.DeliverySpec{
-				Mode:         kaprov1alpha1.DeliveryModePull,
+			Substrate: kaprov1alpha1.SubstrateBindingSpec{
+				Mode:         kaprov1alpha1.SubstrateModePull,
 				SubstrateRef: "oci",
 			},
 			Clusters: []kaprov1alpha1.ClusterRef{{Name: "dev", Labels: map[string]string{"env": "dev"}}},

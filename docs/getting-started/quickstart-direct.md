@@ -50,17 +50,17 @@ The generated repo contains:
 - `substrates/direct.yaml` with `SubstrateClass`, `KubernetesApplyConfig`, and
   `Substrate`;
 - `apps/checkout/` raw Kubernetes manifests;
-- `clusters/`, `fleets/`, `plans/`, and `promotions/` Kapro objects.
+- `clusters/`, `deliveryunits/`, `fleets/`, `plans/`, and `promotions/` Kapro objects.
 
 Apply the generated repo:
 
 ```bash
 kubectl apply -f substrates/direct.yaml
 kubectl wait --for=condition=Ready substrate/direct --timeout=90s
-kubectl apply --recursive -f apps -f clusters -f plans -f fleets -f promotions
+kubectl apply --recursive -f apps -f clusters -f deliveryunits -f plans -f fleets -f promotions
 kubectl get substrateclass kubernetes-apply -o yaml
 kubectl get substrate direct -o yaml
-kubectl get fleets.kapro.io,plans.kapro.io,promotions.kapro.io,promotionruns.runtime.kapro.io,targets.runtime.kapro.io
+kubectl get deliveryunits.kapro.io,fleets.kapro.io,plans.kapro.io,promotions.kapro.io,promotionruns.runtime.kapro.io,targets.runtime.kapro.io
 ```
 
 Promote a new image:

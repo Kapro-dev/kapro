@@ -36,6 +36,8 @@ apiVersion: kapro.io/v1alpha1
 kind: Plan
 metadata:
   name: canary
+  labels:
+    kapro.io/team: platform
 spec:
   stages:
     - name: canary

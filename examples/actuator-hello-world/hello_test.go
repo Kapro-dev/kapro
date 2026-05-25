@@ -25,7 +25,7 @@ func TestHelloWorldRegistersAsCustomSubstrate(t *testing.T) {
 	})
 	if err := reg.RegisterRegistration(actuator.Registration{
 		Name:     "hub-push/hello-world",
-		Mode:     kaprov1alpha1.DeliveryModePush,
+		Mode:     kaprov1alpha1.SubstrateModePush,
 		Actuator: sub,
 	}); err != nil {
 		t.Fatalf("RegisterRegistration: %v", err)
@@ -89,14 +89,14 @@ func TestHelloWorldRejectsConflictingRegistration(t *testing.T) {
 
 	if err := reg.RegisterRegistration(actuator.Registration{
 		Name:     "hub-push/hello-world",
-		Mode:     kaprov1alpha1.DeliveryModePush,
+		Mode:     kaprov1alpha1.SubstrateModePush,
 		Actuator: sub,
 	}); err != nil {
 		t.Fatalf("first register: %v", err)
 	}
 	err := reg.RegisterRegistration(actuator.Registration{
 		Name:     "hub-push/hello-world",
-		Mode:     kaprov1alpha1.DeliveryModePush,
+		Mode:     kaprov1alpha1.SubstrateModePush,
 		Actuator: sub,
 	})
 	if err == nil {

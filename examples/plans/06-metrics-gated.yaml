@@ -14,6 +14,8 @@ apiVersion: kapro.io/v1alpha1
 kind: Plan
 metadata:
   name: metrics-gated
+  labels:
+    kapro.io/team: platform
 spec:
   metricPresets:
     error-rate:

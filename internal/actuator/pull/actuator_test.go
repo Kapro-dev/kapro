@@ -22,7 +22,7 @@ func TestApplyDeltaRecordsDesiredVersionsOnFleetCluster(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
 		Spec: kaprov1alpha1.ClusterSpec{
 			DesiredVersions: map[string]string{"worker": "v1"},
-			Delivery: kaprov1alpha1.DeliverySpec{
+			Substrate: kaprov1alpha1.SubstrateBindingSpec{
 				Mode:         "pull",
 				SubstrateRef: "flux",
 				Parameters: map[string]string{

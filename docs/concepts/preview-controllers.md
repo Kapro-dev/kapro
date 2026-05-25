@@ -5,6 +5,7 @@ controller by default. The public-preview default keeps the first install small:
 
 ```yaml
 controllers:
+  - deliveryunit
   - fleet
   - plan
   - promotion
@@ -22,6 +23,7 @@ runtime child state for each execution attempt. You do not need to list
 
 | Controller key | Default | Purpose |
 |---|---:|---|
+| `deliveryunit` | Yes | Derives `Source` and `Trigger` objects from user-authored `DeliveryUnit` intent. |
 | `fleet` | Yes | Reconciles `Fleet` objects and generated setup resources. |
 | `plan` | Yes | Names the `Plan` template surface. This key is accepted for selection symmetry; `Plan` has no reconciler. |
 | `promotion` | Yes | Stamps controller-owned `PromotionRun` attempts from user-authored `Promotion` intent. |
@@ -53,7 +55,7 @@ Add artifact triggers and human approval gates:
 helm upgrade --install kapro "$KAPRO_CHART" \
   --namespace kapro-system \
   --create-namespace \
-  --set controllers='{fleet,plan,promotion,promotionrun,cluster,trigger,approval}'
+  --set controllers='{deliveryunit,fleet,plan,promotion,promotionrun,cluster,trigger,approval}'
 ```
 
 Run live existing-GitOps adoption with `kapro import argo --apply` or
@@ -63,7 +65,7 @@ Run live existing-GitOps adoption with `kapro import argo --apply` or
 helm upgrade --install kapro "$KAPRO_CHART" \
   --namespace kapro-system \
   --create-namespace \
-  --set controllers='{fleet,plan,promotion,promotionrun,cluster,substrateclass,substrate,substratediscoverypolicy}'
+  --set controllers='{deliveryunit,fleet,plan,promotion,promotionrun,cluster,substrateclass,substrate,substratediscoverypolicy}'
 ```
 
 Run every canonical controller:

@@ -5,9 +5,12 @@ kind: Promotion
 metadata:
   name: checkout-argo-v1-2-3
   labels:
+    kapro.io/unit: checkout-argo
     kapro.io/team: platform
     app.kubernetes.io/name: checkout
 spec:
+  deliveryUnitRef: checkout-argo
   fleetRef: checkout-argo
+  planRef: checkout-argo
   version: v1.2.3
   timeout: 30m

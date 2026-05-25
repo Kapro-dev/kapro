@@ -24,6 +24,7 @@ relitigating it.
 | [0016](0016-substrate-class-config-contract.md) | Substrate class and typed config contract | Superseded in part by 0018 |
 | [0017](0017-promotion-control-plane-for-any-delivery-substrate.md) | Promotion control plane for any delivery substrate | Accepted |
 | [0018](0018-public-runtime-api-split.md) | Public and runtime API split | Accepted |
+| [0019](0019-deliveryunit-authoring-layer.md) | DeliveryUnit authoring layer | Accepted |
 
 ## Adding a new ADR
 

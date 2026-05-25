@@ -84,17 +84,22 @@ type OCITriggerSource struct {
 // observed artifact. Mirrors PromotionSpec with the rollout-input fields the
 // trigger is allowed to set.
 type TriggerTemplate struct {
-	// FleetRef is the name of the parent Fleet the managed Promotion
-	// targets. Required; the PromotionController uses it to resolve the
-	// inline plan and clusters.
+	// DeliveryUnitRef is the unit promoted by created Promotion actions.
+	// +kubebuilder:validation:MinLength=1
+	DeliveryUnitRef string `json:"deliveryUnitRef"`
+	// FleetRef is the name of the Fleet the managed Promotion targets.
+	// Required; the PromotionController uses it to resolve clusters and
+	// delivery defaults.
 	// +kubebuilder:validation:MinLength=1
 	FleetRef string `json:"fleetRef"`
+	// PlanRef is copied to Promotion.spec.planRef.
+	// +optional
+	PlanRef string `json:"planRef,omitempty"`
 	// NameTemplate controls the managed Promotion name. Empty means the
 	// controller derives a deterministic name from the trigger name.
 	// +optional
 	NameTemplate string `json:"nameTemplate,omitempty"`
-	// Plans optionally overrides Fleet.spec.plan on the
-	// managed Promotion.
+	// Plans optionally defines the plan DAG on the managed Promotion.
 	// +kubebuilder:validation:MaxItems=64
 	// +optional
 	Plans []PlanRef `json:"plans,omitempty"`

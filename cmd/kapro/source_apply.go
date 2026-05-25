@@ -34,19 +34,21 @@ func newSourceApplyCmd() *cobra.Command {
 	var opts sourceApplyOptions
 	cmd := &cobra.Command{
 		Use:   "apply",
-		Short: "Apply Source version mappings to a Git checkout",
-		Long: `Updates repo-native YAML or JSON version fields from a Source.
+		Short: "Apply DeliveryUnit source mappings to a Git checkout",
+		Long: `Updates repo-native YAML or JSON version fields from a DeliveryUnit.
 
 This is the Git-native existing-repo path: Kapro writes only explicitly mapped
 fields, then users review and commit the Git diff. If a mapping expands to
 multiple files, pass --include for the intended file(s), or --all when the same
-revision must be applied to every matched file.`,
+revision must be applied to every matched file.
+
+Legacy Source YAML is still accepted as input for local mapping files.`,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			return runSourceApply(opts)
 		},
 	}
 	cmd.Flags().StringVar(&opts.RepoPath, "repo", ".", "Git checkout root")
-	cmd.Flags().StringVar(&opts.SourcePath, "source", "", "Source YAML file (required)")
+	cmd.Flags().StringVar(&opts.SourcePath, "source", "", "DeliveryUnit or Source YAML file (required)")
 	cmd.Flags().StringVar(&opts.Version, "version", "", "Default revision for every mapped unit")
 	cmd.Flags().StringArrayVar(&opts.VersionSet, "set", nil, "Per-unit revision (repeatable: --set unit=revision)")
 	cmd.Flags().StringArrayVar(&opts.Include, "include", nil, "Repo-relative file glob to allow when a mapping matches multiple files")
@@ -86,8 +88,8 @@ func runSourceApply(opts sourceApplyOptions) error {
 		return fmt.Errorf("--push requires --commit")
 	}
 
-	unitNames := make(map[string]struct{}, len(source.Spec.Units))
-	for _, unit := range source.Spec.Units {
+	unitNames := make(map[string]struct{}, len(source.Units))
+	for _, unit := range source.Units {
 		unitNames[unit.Name] = struct{}{}
 	}
 	for unit := range versions {
@@ -97,7 +99,7 @@ func runSourceApply(opts sourceApplyOptions) error {
 	}
 
 	plan := make([]sourceWrite, 0)
-	for _, unit := range source.Spec.Units {
+	for _, unit := range source.Units {
 		version := versions[unit.Name]
 		if version == "" {
 			version = opts.Version
@@ -176,22 +178,39 @@ type sourceWrite struct {
 	Version string
 }
 
-func readPromotionSourceFile(path string) (*kaprov1alpha1.Source, error) {
+func readPromotionSourceFile(path string) (*kaprov1alpha1.SourceSpec, error) {
 	data, err := readFileLimited(path, maxSourceApplyFileSize)
 	if err != nil {
 		return nil, fmt.Errorf("read source %s: %w", path, err)
 	}
-	var source kaprov1alpha1.Source
-	if err := sigsyaml.Unmarshal(data, &source); err != nil {
+	var meta struct {
+		Kind string `json:"kind,omitempty"`
+	}
+	if err := sigsyaml.Unmarshal(data, &meta); err != nil {
 		return nil, fmt.Errorf("parse source %s: %w", path, err)
 	}
-	if source.Kind != "" && source.Kind != "Source" {
-		return nil, fmt.Errorf("source %s is kind %q, expected Source", path, source.Kind)
+	switch meta.Kind {
+	case "", "Source":
+		var source kaprov1alpha1.Source
+		if err := sigsyaml.Unmarshal(data, &source); err != nil {
+			return nil, fmt.Errorf("parse source %s: %w", path, err)
+		}
+		if len(source.Spec.Units) == 0 {
+			return nil, fmt.Errorf("source %s has no units", path)
+		}
+		return &source.Spec, nil
+	case "DeliveryUnit":
+		var unit kaprov1alpha1.DeliveryUnit
+		if err := sigsyaml.Unmarshal(data, &unit); err != nil {
+			return nil, fmt.Errorf("parse source %s: %w", path, err)
+		}
+		if len(unit.Spec.Source.Units) == 0 {
+			return nil, fmt.Errorf("source %s has no units", path)
+		}
+		return &unit.Spec.Source, nil
+	default:
+		return nil, fmt.Errorf("source %s is kind %q, expected DeliveryUnit or Source", path, meta.Kind)
 	}
-	if len(source.Spec.Units) == 0 {
-		return nil, fmt.Errorf("source %s has no units", path)
-	}
-	return &source, nil
 }
 
 func planUnitSourceWrites(opts sourceApplyOptions, unit kaprov1alpha1.Unit, version string) ([]sourceWrite, error) {
