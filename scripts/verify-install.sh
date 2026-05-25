@@ -37,6 +37,9 @@ Environment for release-render and release-cluster modes:
   KAPRO_RELEASE_CHART_URL     Optional chart package URL override
   KAPRO_PREVIOUS_RELEASE_VERSION Previous release tag for supported upgrade/rollback modes (default: current release tag)
   KAPRO_PREVIOUS_RELEASE_CHART_URL Optional previous chart package URL override
+  KAPRO_PREVIOUS_VERIFY_EXPECTED_CRDS Override previous-release CRD checks in upgrade/rollback modes
+  KAPRO_PREVIOUS_VERIFY_AUTH_CAN_I Override previous-release RBAC checks in upgrade/rollback modes
+  KAPRO_PREVIOUS_VERIFY_WEBHOOKS Override previous-release webhook checks in upgrade/rollback modes
 EOF
 }
 
@@ -257,6 +260,12 @@ apply_chart_crds() {
   rm -f "${crds}"
 }
 
+release_minor() {
+  local version
+  version="${1#v}"
+  printf '%s\n' "${version%.*}"
+}
+
 cluster() {
   install_chart "${CHART}"
 }
@@ -270,10 +279,21 @@ release_cluster() (
 )
 
 release_upgrade_cluster() (
-  local current previous current_chart previous_chart cleanup
+  local current previous current_chart previous_chart cleanup previous_expected_crds previous_auth_can_i previous_webhooks
   current="${KAPRO_RELEASE_VERSION:-v0.6.0}"
   previous="${KAPRO_PREVIOUS_RELEASE_VERSION:-${current}}"
   cleanup="${KAPRO_VERIFY_CLEANUP:-false}"
+  previous_expected_crds=false
+  previous_auth_can_i=false
+  previous_webhooks=false
+  if [ "$(release_minor "${previous}")" = "$(release_minor "${current}")" ]; then
+    previous_expected_crds=true
+    previous_auth_can_i=true
+    previous_webhooks=true
+  fi
+  previous_expected_crds="${KAPRO_PREVIOUS_VERIFY_EXPECTED_CRDS:-${previous_expected_crds}}"
+  previous_auth_can_i="${KAPRO_PREVIOUS_VERIFY_AUTH_CAN_I:-${previous_auth_can_i}}"
+  previous_webhooks="${KAPRO_PREVIOUS_VERIFY_WEBHOOKS:-${previous_webhooks}}"
 
   previous_chart="$(download_chart_version "${previous}" "${KAPRO_PREVIOUS_RELEASE_CHART_URL:-}")" || exit 1
   current_chart="$(download_release_chart)" || exit 1
@@ -281,9 +301,9 @@ release_upgrade_cluster() (
 
   echo "installing previous release ${previous} before upgrade"
   KAPRO_VERIFY_CLEANUP=false \
-    KAPRO_VERIFY_EXPECTED_CRDS=false \
-    KAPRO_VERIFY_AUTH_CAN_I="${KAPRO_PREVIOUS_VERIFY_AUTH_CAN_I:-false}" \
-    KAPRO_VERIFY_WEBHOOKS="${KAPRO_PREVIOUS_VERIFY_WEBHOOKS:-false}" \
+    KAPRO_VERIFY_EXPECTED_CRDS="${previous_expected_crds}" \
+    KAPRO_VERIFY_AUTH_CAN_I="${previous_auth_can_i}" \
+    KAPRO_VERIFY_WEBHOOKS="${previous_webhooks}" \
     KAPRO_IMAGE_TAG="${KAPRO_PREVIOUS_IMAGE_TAG:-${previous}}" \
     install_chart "${previous_chart}"
 
@@ -295,12 +315,23 @@ release_upgrade_cluster() (
 )
 
 release_rollback_cluster() (
-  local current previous current_chart previous_chart cleanup namespace release
+  local current previous current_chart previous_chart cleanup namespace release previous_expected_crds previous_auth_can_i previous_webhooks
   current="${KAPRO_RELEASE_VERSION:-v0.6.0}"
   previous="${KAPRO_PREVIOUS_RELEASE_VERSION:-${current}}"
   cleanup="${KAPRO_VERIFY_CLEANUP:-false}"
   namespace="${KAPRO_VERIFY_NAMESPACE:-kapro-system}"
   release="${KAPRO_VERIFY_RELEASE:-kapro}"
+  previous_expected_crds=false
+  previous_auth_can_i=false
+  previous_webhooks=false
+  if [ "$(release_minor "${previous}")" = "$(release_minor "${current}")" ]; then
+    previous_expected_crds=true
+    previous_auth_can_i=true
+    previous_webhooks=true
+  fi
+  previous_expected_crds="${KAPRO_PREVIOUS_VERIFY_EXPECTED_CRDS:-${previous_expected_crds}}"
+  previous_auth_can_i="${KAPRO_PREVIOUS_VERIFY_AUTH_CAN_I:-${previous_auth_can_i}}"
+  previous_webhooks="${KAPRO_PREVIOUS_VERIFY_WEBHOOKS:-${previous_webhooks}}"
 
   previous_chart="$(download_chart_version "${previous}" "${KAPRO_PREVIOUS_RELEASE_CHART_URL:-}")" || exit 1
   current_chart="$(download_release_chart)" || exit 1
@@ -308,9 +339,9 @@ release_rollback_cluster() (
 
   echo "installing previous release ${previous} before rollback smoke"
   KAPRO_VERIFY_CLEANUP=false \
-    KAPRO_VERIFY_EXPECTED_CRDS=false \
-    KAPRO_VERIFY_AUTH_CAN_I="${KAPRO_PREVIOUS_VERIFY_AUTH_CAN_I:-false}" \
-    KAPRO_VERIFY_WEBHOOKS="${KAPRO_PREVIOUS_VERIFY_WEBHOOKS:-false}" \
+    KAPRO_VERIFY_EXPECTED_CRDS="${previous_expected_crds}" \
+    KAPRO_VERIFY_AUTH_CAN_I="${previous_auth_can_i}" \
+    KAPRO_VERIFY_WEBHOOKS="${previous_webhooks}" \
     KAPRO_IMAGE_TAG="${KAPRO_PREVIOUS_IMAGE_TAG:-${previous}}" \
     install_chart "${previous_chart}"
 
@@ -321,7 +352,10 @@ release_rollback_cluster() (
 
   echo "rolling back ${release} in namespace ${namespace} to previous Helm revision"
   helm rollback "${release}" 1 --namespace "${namespace}" --wait --timeout 180s
-  verify_installed_chart
+  KAPRO_VERIFY_EXPECTED_CRDS="${previous_expected_crds}" \
+    KAPRO_VERIFY_AUTH_CAN_I="${previous_auth_can_i}" \
+    KAPRO_VERIFY_WEBHOOKS="${previous_webhooks}" \
+    verify_installed_chart
 
   if [ "${cleanup}" = "true" ]; then
     echo "cleaning up ${release} from namespace ${namespace}"
