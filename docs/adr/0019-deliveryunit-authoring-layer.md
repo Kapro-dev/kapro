@@ -89,9 +89,11 @@ not visibility.
   Source YAML for local mapping files.
 - Promotion and PromotionRun carry `deliveryUnitRef`; runtime Target objects get
   the canonical `kapro.io/unit` label.
-- `Fleet` still supports older inline source and plan fields during the hard
-  migration tests, but new generated public-preview content uses DeliveryUnit,
-  Plan, Fleet, and Promotion as separate concepts.
+- `Fleet` still serves older inline source and plan fields as compatibility
+  inputs during the 0.6.x hard-migration window. They are not emitted by
+  greenfield or import generators, are not the public-preview authoring path,
+  and should be removed before v1.0 once equivalent DeliveryUnit/Plan coverage
+  exists in conformance and quickstart tests.
 - Static GitOps YAML must not fake ownerReferences. Controller-derived `Source`
   and `Trigger` owner references are set only by the DeliveryUnit controller.
 

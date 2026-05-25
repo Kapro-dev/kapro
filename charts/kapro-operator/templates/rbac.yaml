@@ -156,6 +156,7 @@ rules:
 - apiGroups:
   - kapro.io
   resources:
+  - deliveryunits
   - substratediscoverypolicies
   - policies
   - sources
@@ -173,6 +174,7 @@ rules:
   - approvals/status
   - clusters/status
   - clustertemplates/status
+  - deliveryunits/status
   - fleets/status
   - plugins/status
   - policies/status

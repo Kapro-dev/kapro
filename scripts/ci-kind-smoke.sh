@@ -35,6 +35,7 @@ wait_for_crds() {
     approvals.kapro.io \
     clusters.kapro.io \
     clustertemplates.kapro.io \
+    deliveryunits.kapro.io \
     decisiontraces.runtime.kapro.io \
     fleets.kapro.io \
     plans.kapro.io \
