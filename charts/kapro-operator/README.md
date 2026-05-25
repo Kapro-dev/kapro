@@ -105,7 +105,7 @@ helm upgrade --install kapro \
 Then install your plugin service and apply a registration, for example:
 
 ```bash
-kubectl apply -f examples/plugins/slo-gate-registration.yaml
+kubectl apply -f examples/05-plugins/03-slo-gate/registration.yaml
 ```
 
 ## Preview Features

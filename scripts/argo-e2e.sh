@@ -142,7 +142,7 @@ build_kapro_cli() {
 install_kapro() {
   echo "installing Kapro CRDs and operator"
   "${KUBECTL[@]}" apply -f "${ROOT}/config/crd/bases"
-  "${KUBECTL[@]}" apply -k "${ROOT}/examples/kind-demo/operator"
+  "${KUBECTL[@]}" apply -k "${ROOT}/examples/10-kind-demo/operator"
   "${KUBECTL[@]}" -n kapro-system set image deployment/kapro-operator manager=kapro-operator:argo-e2e
   "${KUBECTL[@]}" -n kapro-system set env deployment/kapro-operator \
     KAPRO_DEV_MODE=1 \

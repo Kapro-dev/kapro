@@ -5,7 +5,7 @@ and reconcile a controller-owned PromotionRun attempt. Use the Kind demo when
 you want a fully local scripted environment; use this page when you already
 have a Kubernetes cluster and want to apply the smallest useful hub
 configuration yourself. For a fully scripted local cluster, use the
-[Kind demo](https://github.com/Kapro-dev/kapro/tree/main/examples/kind-demo).
+[Kind demo](https://github.com/Kapro-dev/kapro/tree/main/examples/10-kind-demo).
 If you are deciding between Flux, Argo CD, OCI, or existing GitOps adoption
 first, start with the [Adoption Guide](adoption.md).
 
@@ -55,10 +55,10 @@ examples still need reachable registries and spoke delivery wiring before they
 can prove real workload convergence.
 
 ```bash
-kubectl apply -f examples/quickstart/substrates/flux.yaml
-kubectl apply -f examples/quickstart/deliveryunit.yaml
-kubectl apply -f examples/quickstart/plan.yaml
-kubectl apply -f examples/quickstart/kapro.yaml
+kubectl apply -f examples/01-quickstarts/00-flux/substrates/flux.yaml
+kubectl apply -f examples/01-quickstarts/00-flux/deliveryunit.yaml
+kubectl apply -f examples/01-quickstarts/00-flux/plan.yaml
+kubectl apply -f examples/01-quickstarts/00-flux/kapro.yaml
 ```
 
 Expected:
@@ -78,7 +78,7 @@ kubectl get clusters
 ```
 
 You should see the generated `checkout-canary-eu` and
-`checkout-production-eu` clusters from `examples/quickstart/kapro.yaml`. If
+`checkout-production-eu` clusters from `examples/01-quickstarts/00-flux/kapro.yaml`. If
 none appear, the operator is not reconciling the `Fleet` object; check the
 controller logs before creating manual test targets. Use the Kind demo for a
 fully scripted hub/spoke setup.
@@ -86,7 +86,7 @@ fully scripted hub/spoke setup.
 ## 4. Promote A Version
 
 ```bash
-kubectl apply -f examples/quickstart/promotion.yaml
+kubectl apply -f examples/01-quickstarts/00-flux/promotion.yaml
 kubectl get promotions.kapro.io,promotionruns.runtime.kapro.io,targets.runtime.kapro.io
 ```
 

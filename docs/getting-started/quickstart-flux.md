@@ -28,7 +28,7 @@ The generated repo includes a Flux-shaped starter under `flux/`, workload
 manifests under `apps/`, and Kapro `Substrate`, `Fleet`, `Plan`, and `Promotion`
 objects plus a `DeliveryUnit`. Push the generated repo and replace the placeholder `GitRepository`
 URL before expecting Flux to sync. For the older checked-in minimal hub API
-example, use `examples/quickstart/`.
+example, use `examples/01-quickstarts/00-flux/`.
 
 Promote a new version:
 

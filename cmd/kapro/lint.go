@@ -36,7 +36,7 @@ Exit code: 0 if no errors, 1 if any ERROR (or any WARN under --strict).
 Pass - to read from stdin.
 
 Examples:
-  kapro lint examples/quickstart/*.yaml
+  kapro lint examples/01-quickstarts/00-flux/*.yaml
   kapro lint --strict promotion.yaml plan.yaml
   cat promotion.yaml | kapro lint -
   kapro lint -o json promotion.yaml`,

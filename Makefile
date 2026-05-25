@@ -57,7 +57,7 @@ validate-yaml-json: ## Validate CI, example, monitoring YAML, Prometheus rules, 
 	scripts/validate-yaml-json
 
 .PHONY: check-markdown-links
-check-markdown-links: ## Check local links in README/docs/examples/monitoring Markdown
+check-markdown-links: ## Check local links in README/docs/examples/08-monitoring Markdown
 	python3 scripts/check-markdown-links.py
 
 .PHONY: check-release-train
@@ -129,8 +129,8 @@ conformance: ## Run plugin/provider conformance suites against local reference i
 
 .PHONY: conformance-hello-world
 conformance-hello-world: ## Verify the hello-world custom-substrate example passes the public-SDK contract
-	go test ./examples/actuator-hello-world/...
-	go run ./examples/actuator-hello-world
+	go test ./examples/07-actuator-hello-world/...
+	go run ./examples/07-actuator-hello-world
 
 .PHONY: cli-smoke
 cli-smoke: ## Run fast CLI smoke coverage for create/import/bootstrap/source-apply flows

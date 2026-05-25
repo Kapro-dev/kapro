@@ -251,7 +251,7 @@ block — not as a substitute for the abstraction.
 - ADR-0003 — CloudEvents publisher posture (the protocol we reuse).
 - PR #79 — `internal/lifecycle.Dispatcher` (the transport we extend).
 - PR #80 — Sink retries, timeout-with-overall-context, SSRF guard.
-- PR #91 — `examples/plugins/cloudevents-printer` (the reference
+- PR #91 — `examples/05-plugins/05-cloudevents-printer` (the reference
   pattern `sdk/gate` will productise).
 - KEDA Scaler / ScaledObject split — the structural analogue.
 - ADR-0007 — The Kapro SDK that ships `sdk/gate` for predicate authors.

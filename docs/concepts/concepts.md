@@ -140,7 +140,7 @@ delivery units or plans first; fleets next; promotions last. Direct `promotionru
 can exist as an advanced compatibility path, but first-use repositories should
 prefer `promotions/`.
 
-See [examples/quickstart](https://github.com/Kapro-dev/kapro/tree/main/examples/quickstart)
+See [examples/01-quickstarts/00-flux](https://github.com/Kapro-dev/kapro/tree/main/examples/01-quickstarts/00-flux)
 for the preferred Fleet-root Promotion path.
 
 ## Gate Semantics

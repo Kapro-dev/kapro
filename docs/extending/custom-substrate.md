@@ -96,7 +96,7 @@ apply, observe/convergence, and rollback methods. See
 
 A live, CI-verified hello-world substrate ships in the repo:
 
-- [`examples/actuator-hello-world/`](https://github.com/Kapro-dev/kapro/tree/main/examples/actuator-hello-world)
+- [`examples/07-actuator-hello-world/`](https://github.com/Kapro-dev/kapro/tree/main/examples/07-actuator-hello-world)
 - README: walk-through of `substrate.kind`, `substrate.actuator`,
   `execution.mode`, and `BoolFunc`.
 - `hello_test.go`: registers the substrate via the public registry path,

@@ -28,7 +28,7 @@ parameters:
 
 These fields are the SDK-facing contract for new programmable gates. They are
 stable within the v0.x SDK compatibility policy and are the fields used by the
-examples under `examples/sdk-go/programmable-gates`.
+examples under `examples/06-sdk-go/03-programmable-gates`.
 
 ```go
 s.Gates.MustRegister("canary-error-rate", gate.Func(func(ctx context.Context, req gate.Request) (gate.Result, error) {

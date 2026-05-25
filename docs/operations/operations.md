@@ -45,17 +45,17 @@ Spoke metrics use the same namespace but are emitted by each
 
 ## Dashboard and Alerts
 
-Generic assets are provided under `examples/monitoring/`:
+Generic assets are provided under `examples/08-monitoring/`:
 
-- `examples/monitoring/kapro-operations-dashboard.json`
-- `examples/monitoring/kapro-alerts.yaml`
+- `examples/08-monitoring/kapro-operations-dashboard.json`
+- `examples/08-monitoring/kapro-alerts.yaml`
 
 Installable examples for Prometheus Operator and kube-state-metrics live under
-`examples/monitoring/`:
+`examples/08-monitoring/`:
 
-- `examples/monitoring/prometheus-rules.yaml`
-- `examples/monitoring/grafana-dashboard.json`
-- `examples/monitoring/kube-state-metrics-crd-config.yaml`
+- `examples/08-monitoring/prometheus-rules.yaml`
+- `examples/08-monitoring/grafana-dashboard.json`
+- `examples/08-monitoring/kube-state-metrics-crd-config.yaml`
 
 See `docs/monitoring.md` for the metric inventory and installation notes.
 See `docs/operator-slos.md` for recommended SLI queries, thresholds, and known

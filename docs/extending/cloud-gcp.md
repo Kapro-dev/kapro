@@ -33,7 +33,7 @@ helm upgrade --install kapro charts/kapro-operator \
 
 ## Registering A Spoke
 
-The helper script `examples/cloud/gcp/register-spoke.sh`:
+The helper script `examples/04-substrates/02-cloud/00-gcp/register-spoke.sh`:
 
 1. fetches hub and spoke kubeconfigs with `gcloud container clusters get-credentials`;
 2. runs the Kapro cluster join/bootstrap flow with the supplied labels;
@@ -42,7 +42,7 @@ The helper script `examples/cloud/gcp/register-spoke.sh`:
 Same-project example:
 
 ```bash
-./examples/cloud/gcp/register-spoke.sh \
+./examples/04-substrates/02-cloud/00-gcp/register-spoke.sh \
   --name          spoke-de \
   --hub-project   my-project \
   --hub-cluster   hub \
@@ -57,7 +57,7 @@ Same-project example:
 Cross-project example:
 
 ```bash
-./examples/cloud/gcp/register-spoke.sh \
+./examples/04-substrates/02-cloud/00-gcp/register-spoke.sh \
   --name          spoke-de \
   --hub-project   my-hub-project \
   --hub-cluster   hub \

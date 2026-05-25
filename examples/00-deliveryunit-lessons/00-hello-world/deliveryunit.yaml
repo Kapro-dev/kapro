@@ -1,0 +1,14 @@
+apiVersion: kapro.io/v1alpha1
+kind: DeliveryUnit
+metadata:
+  name: hello-world
+  labels:
+    kapro.io/unit: hello-world
+    kapro.io/team: tutorial
+spec:
+  source:
+    substrateRef: flux
+    units:
+      - name: web
+        chartName: hello-world
+        version: 0.1.0

@@ -42,7 +42,7 @@ create_cluster() {
   if kind_cluster_exists; then
     echo "kind cluster ${CLUSTER_NAME} already exists"
   else
-    kind create cluster --name "${CLUSTER_NAME}" --config "${ROOT}/examples/kind-demo/kind-cluster.yaml"
+    kind create cluster --name "${CLUSTER_NAME}" --config "${ROOT}/examples/10-kind-demo/kind-cluster.yaml"
   fi
 }
 
@@ -72,27 +72,27 @@ install_kapro() {
   echo "installing Kapro CRDs and demo fixture CRDs"
   "${KUBECTL[@]}" apply -f "${ROOT}/config/crd/bases"
   "${KUBECTL[@]}" apply -f "${ROOT}/internal/bootstrap/crds/resourcesets-crd.yaml"
-  "${KUBECTL[@]}" apply -f "${ROOT}/examples/kind-demo/crds"
+  "${KUBECTL[@]}" apply -f "${ROOT}/examples/10-kind-demo/crds"
 
   echo "installing Kapro operator"
-  "${KUBECTL[@]}" apply -k "${ROOT}/examples/kind-demo/operator"
+  "${KUBECTL[@]}" apply -k "${ROOT}/examples/10-kind-demo/operator"
   "${KUBECTL[@]}" -n kapro-system rollout status deployment/kapro-operator --timeout=120s
 }
 
 apply_demo_objects() {
   echo "applying fake Flux fixtures"
-  "${KUBECTL[@]}" apply -f "${ROOT}/examples/kind-demo/fixtures"
+  "${KUBECTL[@]}" apply -f "${ROOT}/examples/10-kind-demo/fixtures"
   patch_fixture_status
 
   echo "applying Kapro demo config"
-  "${KUBECTL[@]}" apply -f "${ROOT}/examples/kind-demo/config/00-plugins.yaml"
-  "${KUBECTL[@]}" apply -f "${ROOT}/examples/kind-demo/config/01-clusters.yaml"
+  "${KUBECTL[@]}" apply -f "${ROOT}/examples/10-kind-demo/config/00-plugins.yaml"
+  "${KUBECTL[@]}" apply -f "${ROOT}/examples/10-kind-demo/config/01-clusters.yaml"
   patch_cluster_status checkout-canary
   patch_cluster_status checkout-prod-eu
   patch_cluster_status checkout-prod-us
-  "${KUBECTL[@]}" apply -f "${ROOT}/examples/kind-demo/config/02-plan.yaml"
-  "${KUBECTL[@]}" apply -f "${ROOT}/examples/kind-demo/config/03-promotion-trigger.yaml"
-  "${KUBECTL[@]}" apply -f "${ROOT}/examples/kind-demo/config/04-promotionrun.yaml"
+  "${KUBECTL[@]}" apply -f "${ROOT}/examples/10-kind-demo/config/02-plan.yaml"
+  "${KUBECTL[@]}" apply -f "${ROOT}/examples/10-kind-demo/config/03-promotion-trigger.yaml"
+  "${KUBECTL[@]}" apply -f "${ROOT}/examples/10-kind-demo/config/04-promotionrun.yaml"
 }
 
 patch_cluster_status() {
@@ -136,7 +136,7 @@ wait_for_targets() {
 }
 
 approve() {
-  "${KUBECTL[@]}" apply -f "${ROOT}/examples/kind-demo/approvals"
+  "${KUBECTL[@]}" apply -f "${ROOT}/examples/10-kind-demo/approvals"
   echo "approvals applied"
 }
 

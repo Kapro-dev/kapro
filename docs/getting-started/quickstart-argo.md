@@ -48,4 +48,4 @@ kapro.io/authorized-unit: checkout
 ```
 
 For the older checked-in minimal hub API example, use
-`examples/quickstart-argo/`.
+`examples/01-quickstarts/02-argo/`.

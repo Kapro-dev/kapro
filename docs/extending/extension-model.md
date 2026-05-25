@@ -207,10 +207,10 @@ API maturity and the general upgrade policy are defined in
 Kapro-compatible badge guidance, and the reserved future certification path are
 defined in `docs/plugin-compatibility-policy.md`. KAI, KGI, KPI, and KSP
 conformance instructions are defined in `docs/plugin-authoring.md`.
-The first external proof points are `examples/plugins/argocd-actuator`, a
+The first external proof points are `examples/05-plugins/00-argocd-actuator`, a
 deployable KAI server for Argo CD Applications,
-`examples/plugins/flux-actuator`, a deployable KAI server for Flux
-HelmReleases, and `examples/sdk-go/argocd-substrate`, a public-SDK-only
+`examples/05-plugins/02-flux-actuator`, a deployable KAI server for Flux
+HelmReleases, and `examples/06-sdk-go/02-argocd-substrate`, a public-SDK-only
 adapter registry example for Argo CD discovery modeling.
 
 Creating or updating a `Plugin` is a platform-admin action. External plugins are

@@ -1,0 +1,26 @@
+apiVersion: kapro.io/v1alpha1
+kind: DeliveryUnit
+metadata:
+  name: hello-world
+  labels:
+    kapro.io/unit: hello-world
+    kapro.io/team: tutorial
+spec:
+  defaultFleetRef: hello-world
+  defaultPlanRef: hello-world
+  source:
+    substrateRef: oci
+    units:
+      - name: web
+        substrateKind: OCIBundle
+        versionField: image.tag
+        version: 0.4.0
+  triggers:
+    - name: tags
+      suspended: true
+      dryRun: true
+      source:
+        type: oci
+        oci:
+          repository: oci://registry.example.com/tutorial/hello-world
+          tagPattern: "^v[0-9]+\\.[0-9]+\\.[0-9]+$"

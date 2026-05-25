@@ -125,4 +125,4 @@ a security or correctness fix requires a documented break. See
 ## Examples
 
 Runnable examples live in
-[`examples/sdk-go`](https://github.com/Kapro-dev/kapro/tree/main/examples/sdk-go).
+[`examples/06-sdk-go`](https://github.com/Kapro-dev/kapro/tree/main/examples/06-sdk-go).
