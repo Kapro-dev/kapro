@@ -327,6 +327,11 @@ func (s *Server) claimDecisionToken(ctx context.Context, targetKey string, claim
 		}
 		annotations := target.GetAnnotations()
 		if annotations[approvalDecisionTokenJTIAnnotation] != "" {
+			if annotations[approvalDecisionTokenJTIAnnotation] == claims.JTI &&
+				annotations[approvalDecisionTokenActionAnnotation] == claims.Action {
+				claimed = target
+				return nil
+			}
 			return errApprovalTokenAlreadyRedeemed
 		}
 		if annotations == nil {
