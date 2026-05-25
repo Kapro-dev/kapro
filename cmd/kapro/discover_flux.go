@@ -600,20 +600,25 @@ units:
 }
 
 func renderFluxDiscoverReadme(opts fluxDiscoverOptions, result fluxDiscoveryResult) string {
+	reviewInstruction := "before switching the Substrate from `Observe` to `Adopt`"
+	applyLead := "Apply observe mode first:"
+	if opts.Take {
+		reviewInstruction = "before running the Adopt-mode apply command below"
+		applyLead = "After review, apply adopt mode:"
+	}
 	return fmt.Sprintf(`# Kapro Flux Discovery
 
 This directory was generated from an existing Flux repository.
 
-Apply observe mode first:
+Review `+"`discovery/review-summary.yaml`"+`, `+"`discovery/flux-discovery.yaml`"+`,
+`+"`discovery/kapro-git-map.yaml`"+`, and `+"`deliveryunits/%s.yaml`"+` %s.
+
+%s
 
 `+"```bash"+`
-kubectl apply -f substrates/%s-observe.yaml
+kubectl apply -f substrates/%s%s.yaml
 kubectl get substrate %s -o yaml
 `+"```"+`
-
-Review `+"`discovery/review-summary.yaml`"+`, `+"`discovery/flux-discovery.yaml`"+`,
-`+"`discovery/kapro-git-map.yaml`"+`, and `+"`deliveryunits/%s.yaml`"+` before switching the Substrate from
-`+"`Observe`"+` to `+"`Adopt`"+`.
 
 Use the generated source mapping to update Git-native version fields:
 
@@ -624,5 +629,5 @@ kapro source apply --repo . --source deliveryunits/%s.yaml --set unit=revision
 Kapro discovered %d Flux objects and %d source mapping units. Flux remains the owner
 of source credentials, reconciliation, inventory, drift correction, and local
 rollout behavior.
-`, opts.Name, opts.Name, opts.Name, opts.Name, len(result.Objects), len(result.SelectedUnits))
+`, opts.Name, reviewInstruction, applyLead, opts.Name, discoverSubstrateFileSuffix(opts.Take), opts.Name, opts.Name, len(result.Objects), len(result.SelectedUnits))
 }

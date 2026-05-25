@@ -942,20 +942,25 @@ func writeReportSubstrateObjects(b *strings.Builder, key string, objects []argoD
 }
 
 func renderArgoDiscoverReadme(opts argoDiscoverOptions, result argoDiscoveryResult) string {
+	reviewInstruction := "before switching the Substrate from `Observe` to `Adopt`"
+	applyLead := "Apply observe mode first:"
+	if opts.Take {
+		reviewInstruction = "before running the Adopt-mode apply command below"
+		applyLead = "After review, apply adopt mode:"
+	}
 	return fmt.Sprintf(`# Kapro Argo Discovery
 
 This directory was generated from an existing Argo CD repository.
 
-Apply observe mode first:
+Review `+"`discovery/review-summary.yaml`"+`, `+"`discovery/argo-discovery.yaml`"+`,
+`+"`discovery/kapro-git-map.yaml`"+`, and `+"`deliveryunits/%s.yaml`"+` %s.
+
+%s
 
 `+"```bash"+`
-kubectl apply -f substrates/%s-observe.yaml
+kubectl apply -f substrates/%s%s.yaml
 kubectl get substrate %s -o yaml
 `+"```"+`
-
-Review `+"`discovery/review-summary.yaml`"+`, `+"`discovery/argo-discovery.yaml`"+`,
-`+"`discovery/kapro-git-map.yaml`"+`, and `+"`deliveryunits/%s.yaml`"+` before switching the Substrate from
-`+"`Observe`"+` to `+"`Adopt`"+`.
 
 Use the generated source mapping to update Git-native version fields:
 
@@ -966,7 +971,7 @@ kapro source apply --repo . --source deliveryunits/%s.yaml --set unit=revision
 Kapro discovered %d Applications, %d ApplicationSets, and %d source mapping units.
 Argo CD remains the owner of cluster credentials, repository credentials, sync
 policy, and local rollout behavior.
-`, opts.Name, opts.Name, opts.Name, opts.Name, len(result.Applications), len(result.ApplicationSets), len(result.SelectedUnits))
+`, opts.Name, reviewInstruction, applyLead, opts.Name, discoverSubstrateFileSuffix(opts.Take), opts.Name, opts.Name, len(result.Applications), len(result.ApplicationSets), len(result.SelectedUnits))
 }
 
 func argoUnitName(doc map[string]any, fallback string) string {
