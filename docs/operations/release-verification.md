@@ -145,12 +145,15 @@ scripts/verify-install.sh release-cluster
 kind delete cluster --name kapro-release-verify
 ```
 
-For upgrade evidence, install the previous release and upgrade to the current
-release:
+For upgrade evidence on a supported upgrade path, install the previous release
+and upgrade to the current release. For `v0.6.0`, use the current tag as the
+previous version to verify Helm upgrade mechanics; pre-0.6 prototype CRDs require
+the [pre-0.6 API reset](../migration/pre-0.6-api-reset.md) cleanup/migration
+instead of an in-place CRD upgrade.
 
 ```bash
 KAPRO_RELEASE_VERSION="${KAPRO_VERSION}" \
-KAPRO_PREVIOUS_RELEASE_VERSION=v0.5.7 \
+KAPRO_PREVIOUS_RELEASE_VERSION="${KAPRO_PREVIOUS_VERSION:-${KAPRO_VERSION}}" \
 KAPRO_VERIFY_CLEANUP=true \
 scripts/verify-install.sh release-upgrade-cluster
 ```
@@ -159,7 +162,7 @@ For rollback evidence:
 
 ```bash
 KAPRO_RELEASE_VERSION="${KAPRO_VERSION}" \
-KAPRO_PREVIOUS_RELEASE_VERSION=v0.5.7 \
+KAPRO_PREVIOUS_RELEASE_VERSION="${KAPRO_PREVIOUS_VERSION:-${KAPRO_VERSION}}" \
 KAPRO_VERIFY_CLEANUP=true \
 scripts/verify-install.sh release-rollback-cluster
 ```
