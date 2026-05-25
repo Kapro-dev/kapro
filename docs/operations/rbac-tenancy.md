@@ -11,7 +11,7 @@ ClusterRoles rather than by making the core APIs namespaced.
 |---|---|---|
 | Platform admin | Operator install, CRDs, controller flags, cluster-wide policy | Full admin on `kapro.io/*` and install namespace |
 | Extension admin | External plugin endpoints and plugin credentials | Create/update `Plugin`; read referenced plugin Secrets |
-| Promotion manager | Promotion and trigger policy for one team or app | Create/update `Promotion`, `Trigger`, `Plan`, `Source` with team labels; read `PromotionRun` execution records |
+| Promotion manager | Promotion and trigger policy for one team or app | Create/update `DeliveryUnit`, `Promotion`, `Trigger`, `Plan`, `Source` with team labels; read `PromotionRun` execution records |
 | Approver | Human gate decisions for assigned teams/environments | Create `Approval`; read relevant `PromotionRun` and `Target` status |
 | Auditor | Evidence and status | Read-only on Kapro CRDs and Events |
 
@@ -21,7 +21,7 @@ Every user-created Kapro object should carry these labels:
 
 | Label | Required on | Meaning |
 |---|---|---|
-| `kapro.io/team` | `Promotion`, `Trigger`, `Plan`, `Source`, `Approval` | Owning team or service group |
+| `kapro.io/team` | `DeliveryUnit` when declaring triggers, `Promotion`, `Trigger`, `Plan`, `Source`, `Approval` | Owning team or service group |
 | `kapro.io/environment` | `Cluster`, `Plan`, `Approval` | Environment boundary such as `dev`, `staging`, `prod` |
 | `kapro.io/plugin-owner` | `Plugin` | Team accountable for the plugin endpoint |
 

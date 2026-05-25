@@ -51,6 +51,11 @@ func validateDeliveryUnit(du *kaprov1alpha1.DeliveryUnit) error {
 	if len(du.Spec.Source.Units) == 0 {
 		return fmt.Errorf("deliveryunit.spec.source.units must include at least one unit")
 	}
+	if len(du.Spec.Triggers) > 0 {
+		if fe := requireTeamLabel(du.Labels); fe != nil {
+			return fmt.Errorf("deliveryunit with spec.triggers requires %s: %w", LabelKaproTeam, fe)
+		}
+	}
 	seenUnits := map[string]int{}
 	for i, unit := range du.Spec.Source.Units {
 		name := strings.TrimSpace(unit.Name)

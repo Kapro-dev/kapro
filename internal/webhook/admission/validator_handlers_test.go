@@ -154,6 +154,23 @@ func TestDeliveryUnitValidatorHandleDeniesInvalidTriggerMaxActive(t *testing.T) 
 	}
 }
 
+func TestDeliveryUnitValidatorHandleRequiresTeamLabelWhenTriggersDeclared(t *testing.T) {
+	validator := admission.NewDeliveryUnitValidator(newKaproAdmissionDecoder(t), nil)
+	unit := kaproAdmissionDeliveryUnit()
+	unit.Labels = nil
+
+	resp := validator.Handle(context.Background(), admissionRequest(t, admissionv1.Create, unit))
+	if resp.Allowed || !strings.Contains(responseMessage(resp), admission.LabelKaproTeam) {
+		t.Fatalf("expected deliveryunit trigger team-label denial, allowed=%t message=%q", resp.Allowed, responseMessage(resp))
+	}
+
+	unit.Labels = map[string]string{admission.LabelKaproTeam: "checkout"}
+	resp = validator.Handle(context.Background(), admissionRequest(t, admissionv1.Create, unit))
+	if !resp.Allowed {
+		t.Fatalf("expected deliveryunit trigger with team label to be allowed, got %s", responseMessage(resp))
+	}
+}
+
 func TestDeliveryUnitValidatorHandle(t *testing.T) {
 	validator := admission.NewDeliveryUnitValidator(newKaproAdmissionDecoder(t), nil)
 	unit := kaproAdmissionDeliveryUnit()
@@ -294,7 +311,7 @@ func kaproAdmissionTrigger() *kaprov1alpha1.Trigger {
 func kaproAdmissionDeliveryUnit() *kaprov1alpha1.DeliveryUnit {
 	return &kaprov1alpha1.DeliveryUnit{
 		TypeMeta:   metav1.TypeMeta{APIVersion: "kapro.io/v1alpha1", Kind: "DeliveryUnit"},
-		ObjectMeta: metav1.ObjectMeta{Name: "checkout"},
+		ObjectMeta: metav1.ObjectMeta{Name: "checkout", Labels: map[string]string{admission.LabelKaproTeam: "checkout"}},
 		Spec: kaprov1alpha1.DeliveryUnitSpec{
 			DefaultFleetRef: "checkout",
 			Source: kaprov1alpha1.SourceSpec{
