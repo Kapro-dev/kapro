@@ -320,6 +320,28 @@ func TestLooksLikeGitRemote(t *testing.T) {
 	}
 }
 
+func TestGitWorktreeRootResolvesSymlink(t *testing.T) {
+	repo := t.TempDir()
+	writeTestFile(t, repo, "argocd/api.yaml", "apiVersion: v1\nkind: ConfigMap\n")
+	initTestGitRepo(t, repo)
+
+	link := filepath.Join(t.TempDir(), "repo-link")
+	if err := os.Symlink(repo, link); err != nil {
+		t.Fatal(err)
+	}
+	got, err := gitWorktreeRoot(link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := filepath.EvalSymlinks(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("gitWorktreeRoot()=%q, want resolved root %q", got, want)
+	}
+}
+
 func writeTestFile(t testing.TB, root, rel, content string) {
 	t.Helper()
 	path := filepath.Join(root, rel)

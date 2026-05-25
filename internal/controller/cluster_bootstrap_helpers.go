@@ -225,10 +225,12 @@ func (r *ClusterBootstrapReconciler) ensureBootstrapProvisioned(ctx context.Cont
 		return ctrl.Result{}, fmt.Errorf("upsert bootstrap ClusterRoleBinding: %w", err)
 	}
 
-	// 3) TokenRequest — short-lived audience-bound SA token.
+	// 3) TokenRequest — short-lived SA token for the hub apiserver. Leave
+	// Audiences empty so the apiserver defaults the token to its own accepted
+	// audience; a custom audience here makes the bootstrap kubeconfig unusable
+	// on clusters that have not configured that audience on kube-apiserver.
 	tr := &authv1.TokenRequest{
 		Spec: authv1.TokenRequestSpec{
-			Audiences:         []string{bootstrapTokenAudience},
 			ExpirationSeconds: ptr.To(int64(bootstrapTokenLifetime.Seconds())),
 		},
 	}

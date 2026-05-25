@@ -15,6 +15,8 @@ import (
 	"kapro.io/kapro/internal/writetarget"
 )
 
+const maxSourceApplyFileSize = 10 * 1024 * 1024
+
 type sourceApplyOptions struct {
 	RepoPath   string
 	SourcePath string
@@ -175,7 +177,7 @@ type sourceWrite struct {
 }
 
 func readPromotionSourceFile(path string) (*kaprov1alpha1.Source, error) {
-	data, err := os.ReadFile(path)
+	data, err := readFileLimited(path, maxSourceApplyFileSize)
 	if err != nil {
 		return nil, fmt.Errorf("read source %s: %w", path, err)
 	}
@@ -319,12 +321,30 @@ func safeRepoPath(repo, rel string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	repoResolved, err := filepath.EvalSymlinks(repoAbs)
+	if err != nil {
+		return "", fmt.Errorf("resolve repo root %s: %w", repo, err)
+	}
 	pathAbs, err := filepath.Abs(filepath.Join(repoAbs, filepath.FromSlash(rel)))
 	if err != nil {
 		return "", err
 	}
 	if pathAbs != repoAbs && !strings.HasPrefix(pathAbs, repoAbs+string(os.PathSeparator)) {
 		return "", fmt.Errorf("path %q escapes repo", rel)
+	}
+	info, err := os.Lstat(pathAbs)
+	if err != nil {
+		return "", fmt.Errorf("stat %q: %w", rel, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return "", fmt.Errorf("path %q is a symlink; refusing to write through symlink", rel)
+	}
+	pathResolved, err := filepath.EvalSymlinks(pathAbs)
+	if err != nil {
+		return "", fmt.Errorf("resolve path %q: %w", rel, err)
+	}
+	if pathResolved != repoResolved && !strings.HasPrefix(pathResolved, repoResolved+string(os.PathSeparator)) {
+		return "", fmt.Errorf("path %q resolves outside repo", rel)
 	}
 	return pathAbs, nil
 }
@@ -361,7 +381,7 @@ func applySourceWritesAtomically(writes []sourceWrite) error {
 		if err != nil {
 			return fmt.Errorf("stat %s: %w", write.Path, err)
 		}
-		data, err := os.ReadFile(write.AbsPath)
+		data, err := readFileLimited(write.AbsPath, maxSourceApplyFileSize)
 		if err != nil {
 			return fmt.Errorf("read %s: %w", write.Path, err)
 		}
@@ -386,7 +406,7 @@ func applySourceWritesAtomically(writes []sourceWrite) error {
 		if tmpPath == "" {
 			continue
 		}
-		data, err := os.ReadFile(tmpPath)
+		data, err := readFileLimited(tmpPath, maxSourceApplyFileSize)
 		if err != nil {
 			return fmt.Errorf("read staged %s: %w", write.Path, err)
 		}

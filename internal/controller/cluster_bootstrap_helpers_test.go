@@ -12,10 +12,15 @@ import (
 	"testing"
 	"time"
 
+	authv1 "k8s.io/api/authentication/v1"
 	certificatesv1 "k8s.io/api/certificates/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	k8sfake "k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 
 	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
@@ -514,6 +519,62 @@ func TestShouldProvision_SecretBased(t *testing.T) {
 				t.Errorf("shouldProvision = %v, want %v (%s)", got, c.want, c.because)
 			}
 		})
+	}
+}
+
+func TestEnsureBootstrapProvisionedRequestsDefaultAPIServerAudience(t *testing.T) {
+	fc := &kaprov1alpha1.Cluster{
+		ObjectMeta: metav1.ObjectMeta{Name: "de-prod-01"},
+		Spec:       kaprov1alpha1.ClusterSpec{Bootstrap: &kaprov1alpha1.ClusterBootstrapSpec{}},
+	}
+	r, c := newBootstrapReconciler(t, fc)
+
+	var captured *authv1.TokenRequest
+	tokenExpiry := metav1.NewTime(time.Now().Add(bootstrapTokenLifetime))
+	kubeClient := k8sfake.NewClientset()
+	kubeClient.PrependReactor("create", "serviceaccounts", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		if action.GetSubresource() != "token" {
+			return false, nil, nil
+		}
+		create, ok := action.(k8stesting.CreateAction)
+		if !ok {
+			t.Fatalf("token action type = %T, want CreateAction", action)
+		}
+		request, ok := create.GetObject().(*authv1.TokenRequest)
+		if !ok {
+			t.Fatalf("token action object type = %T, want *TokenRequest", create.GetObject())
+		}
+		captured = request.DeepCopy()
+		response := request.DeepCopy()
+		response.Status.Token = "bootstrap-token"
+		response.Status.ExpirationTimestamp = tokenExpiry
+		return true, response, nil
+	})
+	r.KubeClient = kubeClient
+
+	res, err := r.ensureBootstrapProvisioned(context.Background(), fc)
+	if err != nil {
+		t.Fatalf("ensureBootstrapProvisioned: %v", err)
+	}
+	if res.RequeueAfter == 0 {
+		t.Fatal("expected requeue after bootstrap material is issued")
+	}
+	if captured == nil {
+		t.Fatal("TokenRequest was not captured")
+	}
+	if len(captured.Spec.Audiences) != 0 {
+		t.Fatalf("bootstrap TokenRequest audiences = %v, want empty so kube-apiserver defaults apply", captured.Spec.Audiences)
+	}
+	if captured.Spec.ExpirationSeconds == nil || *captured.Spec.ExpirationSeconds != int64(bootstrapTokenLifetime.Seconds()) {
+		t.Fatalf("expirationSeconds = %v, want %d", captured.Spec.ExpirationSeconds, int64(bootstrapTokenLifetime.Seconds()))
+	}
+
+	secret := &corev1.Secret{}
+	if err := c.Get(context.Background(), types.NamespacedName{Namespace: "kapro-system", Name: "kapro-bootstrap-kubeconfig-de-prod-01"}, secret); err != nil {
+		t.Fatalf("bootstrap kubeconfig Secret was not written: %v", err)
+	}
+	if got := secret.Annotations["kapro.io/bootstrap-expires-at"]; got != tokenExpiry.Format(time.RFC3339) {
+		t.Fatalf("bootstrap expiry annotation = %q, want %q", got, tokenExpiry.Format(time.RFC3339))
 	}
 }
 

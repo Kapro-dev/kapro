@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -278,13 +279,31 @@ func TestBuildApprovalURLs_SingleApproverHintSignedIntoToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildApprovalURLs returned error: %v", err)
 	}
-	tokenStr := approveURL[strings.LastIndex(approveURL, "token=")+len("token="):]
+	parsed, err := url.Parse(approveURL)
+	if err != nil {
+		t.Fatalf("parse approval URL: %v", err)
+	}
+	if parsed.RawQuery != "" {
+		t.Fatalf("approval URL leaked token in query string: %q", parsed.RawQuery)
+	}
+	tokenStr := parsed.Query().Get("token")
+	if tokenStr != "" {
+		t.Fatalf("approval URL query token = %q, want empty", tokenStr)
+	}
+	fragment, err := url.ParseQuery(parsed.Fragment)
+	if err != nil {
+		t.Fatalf("parse approval URL fragment: %v", err)
+	}
+	tokenStr = fragment.Get("token")
 	claims, err := token.Verify(tokenStr, []byte("secret"))
 	if err != nil {
 		t.Fatalf("Verify returned error: %v", err)
 	}
 	if claims.ApprovedBy != "alice@example.com" {
 		t.Fatalf("expected ApprovedBy claim to be signed, got %q", claims.ApprovedBy)
+	}
+	if claims.JTI == "" {
+		t.Fatal("expected approval token JTI to be signed")
 	}
 }
 

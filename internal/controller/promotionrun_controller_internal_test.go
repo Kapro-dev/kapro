@@ -141,6 +141,10 @@ func TestHandleProgressingFailsWhenPromotionPlanGenerationChanges(t *testing.T) 
 	if stalled == nil || stalled.Reason != "PromotionPlanChanged" {
 		t.Fatalf("Stalled condition = %#v, want reason PromotionPlanChanged", stalled)
 	}
+	reconciling := apimeta.FindStatusCondition(updated.Status.Conditions, kaprov1alpha1.ConditionTypeReconciling)
+	if reconciling == nil || reconciling.Status != metav1.ConditionFalse || reconciling.Reason != "PromotionPlanChanged" {
+		t.Fatalf("Reconciling condition = %#v, want false PromotionPlanChanged", reconciling)
+	}
 	select {
 	case event := <-recorder.Events:
 		if !strings.Contains(event, "PromotionPlanChanged") {
@@ -257,6 +261,90 @@ func TestHandleProgressingFailsWhenPromotionPlanDeleted(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("expected PromotionPlanNotFound event")
+	}
+}
+
+func TestHandlePendingNoVersionStopsReconciling(t *testing.T) {
+	scheme := controllerTestScheme(t)
+	promotionrun := &kaproruntimev1alpha1.PromotionRun{
+		ObjectMeta: metav1.ObjectMeta{Name: "rel-1", Generation: 1},
+		Spec: kaprov1alpha1.PromotionRunSpec{
+			Plans: []kaprov1alpha1.PlanRef{{Name: "main", Plan: "progressive"}},
+		},
+		Status: kaprov1alpha1.PromotionRunStatus{
+			Phase: kaprov1alpha1.PromotionRunPhasePending,
+			Conditions: []metav1.Condition{{
+				Type:   kaprov1alpha1.ConditionTypeReconciling,
+				Status: metav1.ConditionTrue,
+				Reason: "Progressing",
+			}},
+		},
+	}
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&kaproruntimev1alpha1.PromotionRun{}).
+		WithObjects(promotionrun).
+		Build()
+	r := &PromotionRunReconciler{Client: c}
+
+	if _, err := r.handlePending(context.Background(), promotionrun.DeepCopy()); err != nil {
+		t.Fatalf("handlePending returned error: %v", err)
+	}
+
+	var updated kaproruntimev1alpha1.PromotionRun
+	if err := c.Get(context.Background(), client.ObjectKey{Name: "rel-1"}, &updated); err != nil {
+		t.Fatalf("get PromotionRun: %v", err)
+	}
+	reconciling := apimeta.FindStatusCondition(updated.Status.Conditions, kaprov1alpha1.ConditionTypeReconciling)
+	if reconciling == nil || reconciling.Status != metav1.ConditionFalse || reconciling.Reason != "NoVersion" {
+		t.Fatalf("Reconciling condition = %#v, want false NoVersion", reconciling)
+	}
+}
+
+func TestHandleProgressingTimeoutStopsReconciling(t *testing.T) {
+	scheme := controllerTestScheme(t)
+	promotionrun := &kaproruntimev1alpha1.PromotionRun{
+		ObjectMeta: metav1.ObjectMeta{Name: "rel-1", Generation: 1},
+		Spec: kaprov1alpha1.PromotionRunSpec{
+			Version: "repo@sha256:abc",
+			Timeout: "1s",
+			Plans:   []kaprov1alpha1.PlanRef{{Name: "main", Plan: "progressive"}},
+		},
+		Status: kaprov1alpha1.PromotionRunStatus{
+			Phase:           kaprov1alpha1.PromotionRunPhaseProgressing,
+			ResolvedVersion: "repo@sha256:abc",
+			StartedAt:       time.Now().Add(-1 * time.Hour).UTC().Format(time.RFC3339),
+			Conditions: []metav1.Condition{{
+				Type:   kaprov1alpha1.ConditionTypeReconciling,
+				Status: metav1.ConditionTrue,
+				Reason: "Progressing",
+			}},
+		},
+	}
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&kaproruntimev1alpha1.PromotionRun{}, &kaproruntimev1alpha1.Target{}).
+		WithIndex(&kaproruntimev1alpha1.Target{}, IndexKeyPromotionTargetPromotionRun, func(obj client.Object) []string {
+			return PromotionTargetPromotionRunExtractor(obj)
+		}).
+		WithObjects(promotionrun).
+		Build()
+	r := &PromotionRunReconciler{Client: c, Recorder: record.NewFakeRecorder(10)}
+
+	if _, err := r.handleProgressing(context.Background(), promotionrun.DeepCopy()); err != nil {
+		t.Fatalf("handleProgressing returned error: %v", err)
+	}
+
+	var updated kaproruntimev1alpha1.PromotionRun
+	if err := c.Get(context.Background(), client.ObjectKey{Name: "rel-1"}, &updated); err != nil {
+		t.Fatalf("get PromotionRun: %v", err)
+	}
+	if updated.Status.Phase != kaprov1alpha1.PromotionRunPhaseFailed {
+		t.Fatalf("phase = %s, want Failed", updated.Status.Phase)
+	}
+	reconciling := apimeta.FindStatusCondition(updated.Status.Conditions, kaprov1alpha1.ConditionTypeReconciling)
+	if reconciling == nil || reconciling.Status != metav1.ConditionFalse || reconciling.Reason != "Timeout" {
+		t.Fatalf("Reconciling condition = %#v, want false Timeout", reconciling)
 	}
 }
 

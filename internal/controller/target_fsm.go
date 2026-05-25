@@ -28,6 +28,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -233,6 +234,10 @@ func buildApprovalURLs(externalURL string, secret []byte, promotionrun *kaprorun
 
 	approveClaims := baseClaims
 	approveClaims.Action = "approve"
+	approveClaims.JTI, err = token.NewJTI()
+	if err != nil {
+		return "", "", err
+	}
 	approveToken, err := token.Sign(approveClaims, secret)
 	if err != nil {
 		return "", "", fmt.Errorf("sign approve token: %w", err)
@@ -240,14 +245,21 @@ func buildApprovalURLs(externalURL string, secret []byte, promotionrun *kaprorun
 
 	rejectClaims := baseClaims
 	rejectClaims.Action = "reject"
+	rejectClaims.JTI, err = token.NewJTI()
+	if err != nil {
+		return "", "", err
+	}
 	rejectToken, err := token.Sign(rejectClaims, secret)
 	if err != nil {
 		return "", "", fmt.Errorf("sign reject token: %w", err)
 	}
 
 	base := strings.TrimRight(externalURL, "/")
-	approveURL = fmt.Sprintf("%s/approve/%s?token=%s", base, targetKey, approveToken)
-	rejectURL = fmt.Sprintf("%s/reject/%s?token=%s", base, targetKey, rejectToken)
+	// Keep approval tokens out of HTTP query strings. URL fragments are
+	// delivered to the browser page but are not sent to Kapro, proxies, or
+	// server logs; the page POSTs the token as a bearer header.
+	approveURL = fmt.Sprintf("%s/approve/%s#token=%s", base, url.PathEscape(targetKey), url.QueryEscape(approveToken))
+	rejectURL = fmt.Sprintf("%s/reject/%s#token=%s", base, url.PathEscape(targetKey), url.QueryEscape(rejectToken))
 	return approveURL, rejectURL, nil
 }
 

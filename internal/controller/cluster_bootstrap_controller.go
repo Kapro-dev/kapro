@@ -84,10 +84,6 @@ const (
 	// the operator hands to the spoke for its initial CSR submission.
 	bootstrapKubeconfigSecretFmt = "kapro-bootstrap-kubeconfig-%s"
 
-	// bootstrapTokenAudience scopes the bootstrap SA token to the CSR submission
-	// action — it cannot be used as a generic kube-apiserver bearer token.
-	bootstrapTokenAudience = "kapro-bootstrap"
-
 	// bootstrapTokenLifetime is the TTL of the issued SA TokenRequest.
 	// Long enough for a kubectl wait + CSR poll round-trip; short enough that a
 	// leaked bootstrap kubeconfig stops being useful after one hour.

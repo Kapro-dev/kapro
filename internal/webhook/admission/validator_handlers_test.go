@@ -1,0 +1,167 @@
+package admission_test
+
+import (
+	"context"
+	"encoding/json"
+	"strings"
+	"testing"
+
+	admissionv1 "k8s.io/api/admission/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	ctrladmission "sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
+	"kapro.io/kapro/internal/webhook/admission"
+)
+
+func TestApprovalValidatorHandle(t *testing.T) {
+	validator := admission.NewApprovalValidator(newKaproAdmissionDecoder(t))
+
+	valid := kaproAdmissionApproval("rel-1", "ref-a")
+	resp := validator.Handle(context.Background(), admissionRequest(t, admissionv1.Create, valid))
+	if !resp.Allowed {
+		t.Fatalf("expected valid approval to be allowed, got %s", responseMessage(resp))
+	}
+
+	invalid := kaproAdmissionApproval("rel-1", "ref-a")
+	invalid.Name = "wrong-name"
+	resp = validator.Handle(context.Background(), admissionRequest(t, admissionv1.Create, invalid))
+	if resp.Allowed || !strings.Contains(responseMessage(resp), "approval.metadata.name") {
+		t.Fatalf("expected approval name denial, allowed=%t message=%q", resp.Allowed, responseMessage(resp))
+	}
+}
+
+func TestPromotionPlanValidatorHandleRequiresTeamLabelOnlyOnCreate(t *testing.T) {
+	validator := admission.NewPromotionPlanValidator(newKaproAdmissionDecoder(t))
+	plan := kaproAdmissionPlan()
+
+	resp := validator.Handle(context.Background(), admissionRequest(t, admissionv1.Create, plan))
+	if resp.Allowed || !strings.Contains(responseMessage(resp), admission.LabelKaproTeam) {
+		t.Fatalf("expected create without team label to be denied, allowed=%t message=%q", resp.Allowed, responseMessage(resp))
+	}
+
+	plan.Labels = map[string]string{admission.LabelKaproTeam: "checkout"}
+	resp = validator.Handle(context.Background(), admissionRequest(t, admissionv1.Create, plan))
+	if !resp.Allowed {
+		t.Fatalf("expected create with team label to be allowed, got %s", responseMessage(resp))
+	}
+
+	updatePlan := kaproAdmissionPlan()
+	resp = validator.Handle(context.Background(), admissionRequest(t, admissionv1.Update, updatePlan))
+	if !resp.Allowed {
+		t.Fatalf("expected update without team label to be allowed, got %s", responseMessage(resp))
+	}
+}
+
+func TestPromotionTriggerValidatorHandleRequiresTeamLabelOnlyOnCreate(t *testing.T) {
+	validator := admission.NewPromotionTriggerValidator(newKaproAdmissionDecoder(t))
+	trigger := kaproAdmissionTrigger()
+
+	resp := validator.Handle(context.Background(), admissionRequest(t, admissionv1.Create, trigger))
+	if resp.Allowed || !strings.Contains(responseMessage(resp), admission.LabelKaproTeam) {
+		t.Fatalf("expected create without team label to be denied, allowed=%t message=%q", resp.Allowed, responseMessage(resp))
+	}
+
+	trigger.Labels = map[string]string{admission.LabelKaproTeam: "checkout"}
+	resp = validator.Handle(context.Background(), admissionRequest(t, admissionv1.Create, trigger))
+	if !resp.Allowed {
+		t.Fatalf("expected create with team label to be allowed, got %s", responseMessage(resp))
+	}
+
+	updateTrigger := kaproAdmissionTrigger()
+	resp = validator.Handle(context.Background(), admissionRequest(t, admissionv1.Update, updateTrigger))
+	if !resp.Allowed {
+		t.Fatalf("expected update without team label to be allowed, got %s", responseMessage(resp))
+	}
+}
+
+func TestPromotionTriggerValidatorHandleDeniesInvalidSource(t *testing.T) {
+	validator := admission.NewPromotionTriggerValidator(newKaproAdmissionDecoder(t))
+	trigger := kaproAdmissionTrigger()
+	trigger.Labels = map[string]string{admission.LabelKaproTeam: "checkout"}
+	trigger.Spec.Source.Type = "git"
+
+	resp := validator.Handle(context.Background(), admissionRequest(t, admissionv1.Create, trigger))
+	if resp.Allowed || !strings.Contains(responseMessage(resp), "unsupported") {
+		t.Fatalf("expected unsupported trigger source denial, allowed=%t message=%q", resp.Allowed, responseMessage(resp))
+	}
+}
+
+func newKaproAdmissionDecoder(t *testing.T) ctrladmission.Decoder {
+	t.Helper()
+	scheme := runtime.NewScheme()
+	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("add kapro scheme: %v", err)
+	}
+	return ctrladmission.NewDecoder(scheme)
+}
+
+func admissionRequest(t *testing.T, operation admissionv1.Operation, obj runtime.Object) ctrladmission.Request {
+	t.Helper()
+	raw, err := json.Marshal(obj)
+	if err != nil {
+		t.Fatalf("marshal admission object: %v", err)
+	}
+	return ctrladmission.Request{
+		AdmissionRequest: admissionv1.AdmissionRequest{
+			Operation: operation,
+			Object:    runtime.RawExtension{Raw: raw},
+		},
+	}
+}
+
+func responseMessage(resp ctrladmission.Response) string {
+	if resp.Result == nil {
+		return ""
+	}
+	return resp.Result.Message
+}
+
+func kaproAdmissionApproval(promotionRun, ref string) *kaprov1alpha1.Approval {
+	return &kaprov1alpha1.Approval{
+		TypeMeta: metav1.TypeMeta{APIVersion: "kapro.io/v1alpha1", Kind: "Approval"},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: promotionRun + "-" + ref,
+		},
+		Spec: kaprov1alpha1.ApprovalSpec{
+			PromotionRun: promotionRun,
+			Target:       "cluster-a",
+			Ref:          ref,
+			ApprovedBy:   "alice",
+		},
+	}
+}
+
+func kaproAdmissionPlan() *kaprov1alpha1.Plan {
+	return &kaprov1alpha1.Plan{
+		TypeMeta:   metav1.TypeMeta{APIVersion: "kapro.io/v1alpha1", Kind: "Plan"},
+		ObjectMeta: metav1.ObjectMeta{Name: "standard"},
+		Spec: kaprov1alpha1.PlanSpec{
+			Stages: []kaprov1alpha1.Stage{{
+				Name:     "dev",
+				Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "dev"}},
+			}},
+		},
+	}
+}
+
+func kaproAdmissionTrigger() *kaprov1alpha1.Trigger {
+	return &kaprov1alpha1.Trigger{
+		TypeMeta:   metav1.TypeMeta{APIVersion: "kapro.io/v1alpha1", Kind: "Trigger"},
+		ObjectMeta: metav1.ObjectMeta{Name: "checkout"},
+		Spec: kaprov1alpha1.TriggerSpec{
+			Source: kaprov1alpha1.TriggerSource{
+				Type: "oci",
+				OCI: &kaprov1alpha1.OCITriggerSource{
+					Repository: "oci://registry.example.com/checkout",
+					TagPattern: "v.*",
+				},
+			},
+			PromotionTemplate: kaprov1alpha1.TriggerTemplate{
+				FleetRef: "checkout",
+				Plans:    []kaprov1alpha1.PlanRef{{Name: "standard"}},
+			},
+		},
+	}
+}

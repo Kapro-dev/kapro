@@ -448,12 +448,14 @@ func TestBothKindsSetRecordedAsFailed(t *testing.T) {
 
 // TestPerHandlerTimeoutHonoredAbove30s verifies that the dispatcher's
 // per-handler timeout (set on the handler spec, up to 5m) is not silently
-// capped by the default HTTP client. The default client must have no
-// Timeout; the per-request context is the only deadline.
+// capped at the default 30s budget by the default HTTP client.
 func TestPerHandlerTimeoutHonoredAbove30s(t *testing.T) {
 	c := defaultHTTPClient()
-	if c.Timeout != 0 {
-		t.Fatalf("defaultHTTPClient().Timeout = %v, want 0 (per-request ctx is the only deadline)", c.Timeout)
+	if c.Timeout != maxHandlerTimeout {
+		t.Fatalf("defaultHTTPClient().Timeout = %v, want %v", c.Timeout, maxHandlerTimeout)
+	}
+	if c.Timeout <= defaultHandlerTimeout {
+		t.Fatalf("defaultHTTPClient().Timeout = %v, want above default handler timeout %v", c.Timeout, defaultHandlerTimeout)
 	}
 }
 

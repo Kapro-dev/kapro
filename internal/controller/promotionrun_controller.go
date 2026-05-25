@@ -299,6 +299,7 @@ func (r *PromotionRunReconciler) handlePending(ctx context.Context, promotionrun
 		ensurePromotionRunSummary(promotionrun)
 		r.setPromotionRunReadyCondition(promotionrun, metav1.ConditionFalse, "NoVersion", "spec.version or spec.versions is required")
 		r.setStalledCondition(promotionrun, "NoVersion", "spec.version or spec.versions is required")
+		r.setReconcilingCondition(promotionrun, metav1.ConditionFalse, "NoVersion", "spec.version or spec.versions is required")
 		promotionrun.Status.ObservedGeneration = promotionrun.Generation
 		if err := r.patchPromotionRunStatus(ctx, promotionrun, patch); err != nil {
 			return ctrl.Result{}, fmt.Errorf("patch stalled: %w", err)
@@ -477,6 +478,7 @@ func (r *PromotionRunReconciler) handleProgressing(ctx context.Context, promotio
 			promotionrun.Status.CompletedAt = time.Now().UTC().Format(time.RFC3339)
 			r.setPromotionRunReadyCondition(promotionrun, metav1.ConditionFalse, "PromotionPlanChanged", msg)
 			r.setStalledCondition(promotionrun, "PromotionPlanChanged", msg)
+			r.setReconcilingCondition(promotionrun, metav1.ConditionFalse, "PromotionPlanChanged", msg)
 			if err := r.patchPromotionRunStatus(ctx, promotionrun, patch); err != nil {
 				return ctrl.Result{}, fmt.Errorf("patch PromotionRun status (promotionplan changed): %w", err)
 			}
@@ -662,6 +664,7 @@ func (r *PromotionRunReconciler) handleTimeout(ctx context.Context, promotionrun
 	msg := fmt.Sprintf("promotionrun exceeded timeout (%s)", promotionrun.Spec.Timeout)
 	r.setPromotionRunReadyCondition(promotionrun, metav1.ConditionFalse, "Timeout", msg)
 	r.setStalledCondition(promotionrun, "Timeout", msg)
+	r.setReconcilingCondition(promotionrun, metav1.ConditionFalse, "Timeout", msg)
 	if err := r.patchPromotionRunStatus(ctx, promotionrun, patch); err != nil {
 		return ctrl.Result{}, fmt.Errorf("patch PromotionRun status (timeout): %w", err)
 	}
@@ -1484,7 +1487,8 @@ func (r *PromotionRunReconciler) handleDeletion(ctx context.Context, promotionru
 }
 
 func (r *PromotionRunReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	ctx := context.Background()
+	ctx, cancel := fieldIndexerSetupContext()
+	defer cancel()
 
 	// Index Approvals by promotionrun label — used to map Approval changes back to
 	// the owning PromotionRun.

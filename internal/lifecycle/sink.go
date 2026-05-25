@@ -107,7 +107,7 @@ func SinkFromEnv() (*Sink, error) {
 		AuthHeaderValue: os.Getenv(SinkEnvAuthHeaderValue),
 		Timeout:         timeout,
 		MaxRetries:      retries,
-		HTTPClient:      defaultHTTPClient(),
+		HTTPClient:      defaultHTTPClientWithTimeout(timeout),
 	}, nil
 }
 
@@ -201,7 +201,7 @@ func (s *Sink) doRequest(ctx context.Context, body []byte) (int, error) {
 	}
 	client := s.HTTPClient
 	if client == nil {
-		client = defaultHTTPClient()
+		client = defaultHTTPClientWithTimeout(s.Timeout)
 	}
 	resp, err := client.Do(req)
 	if err != nil {
