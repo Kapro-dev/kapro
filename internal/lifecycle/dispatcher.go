@@ -94,9 +94,9 @@ type Dispatcher struct {
 }
 
 // NewDispatcher constructs a Dispatcher rooted at the given context (the
-// manager's context). HTTPClient is nil-defaulted to a defaulted client
-// with no client-level timeout (per-request context drives deadlines) and
-// an SSRF-guarded transport.
+// manager's context). HTTPClient is nil-defaulted to a client whose timeout
+// matches the maximum handler budget; per-request context still drives the
+// actual handler deadline.
 func NewDispatcher(rootCtx context.Context, c client.Client, rec record.EventRecorder, namespace string) *Dispatcher {
 	return &Dispatcher{
 		Client:     c,
@@ -1013,19 +1013,18 @@ func truncate(s string, n int) string {
 // webhook calls. It applies the same SSRF guard as the gate webhook so
 // lifecycle webhooks cannot be aimed at private or metadata addresses
 // unless the operator opts out via KAPRO_LIFECYCLE_INSECURE_WEBHOOKS=1.
-//
-// Note: the client has no Timeout. Per-handler timeouts (up to
-// maxHandlerTimeout = 5m) are enforced via http.NewRequestWithContext on
-// each attempt. Setting a client-level Timeout would silently cap user
-// handler.timeout values above 30s.
 func defaultHTTPClient() *http.Client {
+	return defaultHTTPClientWithTimeout(maxHandlerTimeout)
+}
+
+func defaultHTTPClientWithTimeout(timeout time.Duration) *http.Client {
 	allowInsecure := os.Getenv(allowInsecureEnv) == "1"
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.Proxy = nil
 	if !allowInsecure {
 		transport.DialContext = safeDial
 	}
-	return &http.Client{Transport: transport}
+	return &http.Client{Transport: transport, Timeout: timeout}
 }
 
 func isForbiddenIP(addr netip.Addr) bool {

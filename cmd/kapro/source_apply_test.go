@@ -319,6 +319,42 @@ spec:
 	}
 }
 
+func TestRunSourceApplyRejectsSymlinkTargets(t *testing.T) {
+	repo := t.TempDir()
+	external := filepath.Join(t.TempDir(), "external.yaml")
+	if err := os.WriteFile(external, []byte("spec:\n  version: old\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(external, filepath.Join(repo, "app.yaml")); err != nil {
+		t.Fatal(err)
+	}
+	sourcePath := filepath.Join(repo, "source.yaml")
+	writeTestFile(t, repo, "source.yaml", `apiVersion: kapro.io/v1alpha1
+kind: Source
+metadata:
+  name: checkout
+spec:
+  units:
+  - name: api
+    substrateKind: GitYAMLField
+    sourcePath: app.yaml
+    versionField: spec.version
+`)
+	initTestGitRepo(t, repo)
+
+	err := runSourceApply(sourceApplyOptions{
+		RepoPath:   repo,
+		SourcePath: sourcePath,
+		VersionSet: []string{"api=new"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "refusing to write through symlink") {
+		t.Fatalf("expected symlink rejection, got %v", err)
+	}
+	if got := readFile(t, external); !strings.Contains(got, "version: old") {
+		t.Fatalf("source apply modified external symlink target:\n%s", got)
+	}
+}
+
 func TestUpdateYAMLFieldSupportsSequenceIndex(t *testing.T) {
 	repo := t.TempDir()
 	path := filepath.Join(repo, "app.yaml")

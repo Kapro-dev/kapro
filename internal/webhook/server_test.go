@@ -3,7 +3,7 @@ package webhook
 import (
 	"net/http"
 	"net/http/httptest"
-	"net/url"
+	"strings"
 	"testing"
 
 	kaproruntimev1alpha1 "kapro.io/kapro/api/kaproruntime/v1alpha1"
@@ -85,7 +85,8 @@ func TestHandleReject_TargetPromotionRunMismatchRejected(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sign token: %v", err)
 	}
-	req := httptest.NewRequest(http.MethodPost, "/reject/"+target.Name+"?token="+url.QueryEscape(tokenStr), nil)
+	req := httptest.NewRequest(http.MethodPost, "/reject/"+target.Name, nil)
+	req.Header.Set("Authorization", "Bearer "+tokenStr)
 	req.SetPathValue("name", target.Name)
 	rec := httptest.NewRecorder()
 
@@ -93,5 +94,34 @@ func TestHandleReject_TargetPromotionRunMismatchRejected(t *testing.T) {
 
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("expected 409 on target/promotionrun mismatch, got %d", rec.Code)
+	}
+}
+
+func TestApprovalWebhookRejectsQueryToken(t *testing.T) {
+	s := &Server{TokenSecret: []byte("secret")}
+	tokenStr, err := token.Sign(token.Claims{Action: "approve", Exp: 1 << 62}, s.TokenSecret)
+	if err != nil {
+		t.Fatalf("sign token: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/approve/target-a?token="+tokenStr, nil)
+
+	if _, err := s.verifyToken(req, "approve"); err == nil || !strings.Contains(err.Error(), "not query strings") {
+		t.Fatalf("expected query token rejection, got %v", err)
+	}
+}
+
+func TestApprovalWebhookRendersFragmentBackedDecisionPage(t *testing.T) {
+	s := &Server{}
+	req := httptest.NewRequest(http.MethodGet, "/approve/target-a", nil)
+	rec := httptest.NewRecorder()
+
+	s.handleApprove(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 decision page, got %d", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "window.location.hash") || !strings.Contains(body, `Authorization": "Bearer "`) {
+		t.Fatalf("decision page does not read fragment and POST bearer token:\n%s", body)
 	}
 }

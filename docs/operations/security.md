@@ -200,6 +200,10 @@ Human approvals are also gates. The approval admission path should set
 `spec.approvedBy` from the authenticated request identity and restrict
 `spec.bypass` to emergency groups.
 
+Approval webhook links keep signed tokens in browser-only URL fragments and
+submit decisions with `Authorization: Bearer` POST requests. Do not place
+approval tokens in query strings, status fields, Events, or logs.
+
 ## Secret Handling
 
 Kapro references Secrets for registry credentials, plugin TLS, approval tokens,

@@ -2,9 +2,10 @@
 //
 // The server exposes three endpoints:
 //
-//	POST /approve/{targetKey}?token=<t>   — creates an Approval CR to unblock the target
-//	POST /reject/{targetKey}?token=<t>    — sets rejected=true on the inline target status entry;
-//	                                        PromotionRunReconciler will fail the target on next reconcile.
+//	GET  /approve/{targetKey}#token=<t>   — renders a confirmation page; the fragment is browser-only.
+//	POST /approve/{targetKey}             — creates an Approval CR using Authorization: Bearer <t>.
+//	GET  /reject/{targetKey}#token=<t>    — renders a confirmation page; the fragment is browser-only.
+//	POST /reject/{targetKey}              — rejects the target using Authorization: Bearer <t>.
 //	GET  /status/{targetKey}?ns=<ns>      — returns public target phase/version (no auth required)
 //
 // Token format is defined in internal/webhook/token. Tokens are HMAC-SHA256 signed,
@@ -19,7 +20,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"net/http"
+	"strings"
 	"time"
 
 	kaproruntimev1alpha1 "kapro.io/kapro/api/kaproruntime/v1alpha1"
@@ -70,9 +73,13 @@ func (s *Server) Handler() http.Handler {
 	return mux
 }
 
-// handleApprove verifies the token and creates an Approval CR.
-// POST /approve/{targetKey}?token=<t>
+// handleApprove verifies the bearer token and creates an Approval CR.
+// POST /approve/{targetKey}
 func (s *Server) handleApprove(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		s.renderDecisionPage(w, "approve", trimPrefix(r.URL.Path, "/approve/"))
+		return
+	}
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -142,10 +149,14 @@ func (s *Server) handleApprove(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleReject sets rejected=true on the inline env entry so PromotionRunReconciler
+// handleReject sets rejected=true on the inline target entry so PromotionRunReconciler
 // fails it on the next reconcile.
-// POST /reject/{envKey}?token=<t>
+// POST /reject/{targetKey}
 func (s *Server) handleReject(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		s.renderDecisionPage(w, "reject", trimPrefix(r.URL.Path, "/reject/"))
+		return
+	}
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -269,23 +280,22 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// maxApprovalTokenLen bounds the ?token= query parameter so an
-// attacker cannot exhaust memory by sending Authorization-equivalents
-// of arbitrary size (gate webhook hardening). Real Kapro approval tokens
-// are HMAC-signed claims that decode to <1 KiB; 4 KiB leaves headroom
-// for future fields without ever crossing into pathological territory.
+// maxApprovalTokenLen bounds the Authorization bearer token so an attacker
+// cannot force verification work on arbitrary-size inputs. Real Kapro
+// approval tokens are HMAC-signed claims that decode to <1 KiB; 4 KiB leaves
+// headroom for future fields without crossing into pathological territory.
 const maxApprovalTokenLen = 4 * 1024
 
 func (s *Server) verifyToken(r *http.Request, expectedAction string) (*token.Claims, error) {
-	// Bound the entire query string, not just the token field, to keep the
-	// parse-time cost finite (url.ParseQuery is O(N)).
-	if len(r.URL.RawQuery) > maxApprovalTokenLen+128 {
-		return nil, fmt.Errorf("query string too large")
+	if r.URL.RawQuery != "" {
+		return nil, fmt.Errorf("approval tokens must be sent in Authorization bearer headers, not query strings")
 	}
-	t := r.URL.Query().Get("token")
-	if t == "" {
-		return nil, fmt.Errorf("missing token")
+	auth := r.Header.Get("Authorization")
+	const bearerPrefix = "Bearer "
+	if !strings.HasPrefix(auth, bearerPrefix) {
+		return nil, fmt.Errorf("missing bearer token")
 	}
+	t := strings.TrimSpace(strings.TrimPrefix(auth, bearerPrefix))
 	if len(t) > maxApprovalTokenLen {
 		return nil, fmt.Errorf("token too large")
 	}
@@ -297,6 +307,57 @@ func (s *Server) verifyToken(r *http.Request, expectedAction string) (*token.Cla
 		return nil, fmt.Errorf("token action %q cannot be used for %s", claims.Action, expectedAction)
 	}
 	return claims, nil
+}
+
+var decisionPageTemplate = template.Must(template.New("approval-decision").Parse(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kapro {{.TitleAction}}</title>
+</head>
+<body style="font-family:system-ui,sans-serif;max-width:520px;margin:48px auto;padding:0 20px;line-height:1.45">
+  <h1>Kapro {{.TitleAction}}</h1>
+  <p>Target: <code>{{.TargetKey}}</code></p>
+  <p id="state">Review this action before continuing.</p>
+  <button id="submit" type="button">{{.TitleAction}}</button>
+  <pre id="result" style="white-space:pre-wrap"></pre>
+  <script>
+  const token = new URLSearchParams(window.location.hash.slice(1)).get("token");
+  const state = document.getElementById("state");
+  const submit = document.getElementById("submit");
+  const result = document.getElementById("result");
+  if (!token) {
+    state.textContent = "This approval link is missing its browser-only token fragment.";
+    submit.disabled = true;
+  }
+  submit.addEventListener("click", async () => {
+    submit.disabled = true;
+    state.textContent = "Submitting decision...";
+    const response = await fetch(window.location.pathname, {
+      method: "POST",
+      headers: { "Authorization": "Bearer " + token }
+    });
+    const text = await response.text();
+    state.textContent = response.ok ? "Decision recorded." : "Decision failed.";
+    result.textContent = text;
+  });
+  </script>
+</body>
+</html>`))
+
+func (s *Server) renderDecisionPage(w http.ResponseWriter, action, targetKey string) {
+	titleAction := "Approve"
+	if action == "reject" {
+		titleAction = "Reject"
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := decisionPageTemplate.Execute(w, map[string]string{
+		"TargetKey":   targetKey,
+		"TitleAction": titleAction,
+	}); err != nil {
+		http.Error(w, "render decision page", http.StatusInternalServerError)
+	}
 }
 
 func (s *Server) getPromotionRun(ctx context.Context, name, namespace string) (*kaproruntimev1alpha1.PromotionRun, error) {

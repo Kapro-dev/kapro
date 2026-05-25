@@ -321,12 +321,30 @@ func safeRepoPath(repo, rel string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	repoResolved, err := filepath.EvalSymlinks(repoAbs)
+	if err != nil {
+		return "", fmt.Errorf("resolve repo root %s: %w", repo, err)
+	}
 	pathAbs, err := filepath.Abs(filepath.Join(repoAbs, filepath.FromSlash(rel)))
 	if err != nil {
 		return "", err
 	}
 	if pathAbs != repoAbs && !strings.HasPrefix(pathAbs, repoAbs+string(os.PathSeparator)) {
 		return "", fmt.Errorf("path %q escapes repo", rel)
+	}
+	info, err := os.Lstat(pathAbs)
+	if err != nil {
+		return "", fmt.Errorf("stat %q: %w", rel, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return "", fmt.Errorf("path %q is a symlink; refusing to write through symlink", rel)
+	}
+	pathResolved, err := filepath.EvalSymlinks(pathAbs)
+	if err != nil {
+		return "", fmt.Errorf("resolve path %q: %w", rel, err)
+	}
+	if pathResolved != repoResolved && !strings.HasPrefix(pathResolved, repoResolved+string(os.PathSeparator)) {
+		return "", fmt.Errorf("path %q resolves outside repo", rel)
 	}
 	return pathAbs, nil
 }
