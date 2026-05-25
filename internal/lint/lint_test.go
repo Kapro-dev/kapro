@@ -41,6 +41,70 @@ func TestLintPromotion_RejectsMissingRequired(t *testing.T) {
 	}
 }
 
+func TestLintDeliveryUnit_RejectsInvalidSourceAndTriggers(t *testing.T) {
+	du := &kaprov1alpha1.DeliveryUnit{
+		Spec: kaprov1alpha1.DeliveryUnitSpec{
+			Source: kaprov1alpha1.SourceSpec{
+				Units: []kaprov1alpha1.Unit{
+					{Name: "api"},
+					{Name: "api"},
+					{},
+				},
+			},
+			Triggers: []kaprov1alpha1.DeliveryUnitTrigger{
+				{
+					Source: kaprov1alpha1.TriggerSource{Type: "oci"},
+				},
+				{
+					Source: kaprov1alpha1.TriggerSource{Type: "git"},
+				},
+			},
+		},
+	}
+	issues := LintDeliveryUnit(du)
+
+	for _, want := range []string{
+		"metadata.name",
+		"duplicate unit",
+		"unit name",
+		"trigger requires fleetRef",
+		"source.oci",
+		"duplicate derived Trigger suffix",
+		"unsupported trigger source type",
+	} {
+		hit := findIssue(t, issues, want)
+		if hit == nil {
+			t.Errorf("missing expected DeliveryUnit issue for %q; got %+v", want, issues)
+			continue
+		}
+		if hit.Severity != SeverityError {
+			t.Errorf("issue %q should be ERROR, got %s", want, hit.Severity)
+		}
+	}
+}
+
+func TestLintFile_DeliveryUnitDispatch(t *testing.T) {
+	issues := LintFile("du.yaml", []byte(`apiVersion: kapro.io/v1alpha1
+kind: DeliveryUnit
+metadata:
+  name: checkout
+spec:
+  source:
+    units:
+      - name: api
+  defaultFleetRef: checkout
+  triggers:
+    - source:
+        type: oci
+        oci:
+          repository: ghcr.io/example/checkout
+          tagPattern: '^v'
+`))
+	if len(issues) != 0 {
+		t.Fatalf("expected valid DeliveryUnit, got %+v", issues)
+	}
+}
+
 func TestLintPromotion_WarnsOnNoTimeout(t *testing.T) {
 	p := &kaprov1alpha1.Promotion{
 		ObjectMeta: metav1.ObjectMeta{Name: "p1"},

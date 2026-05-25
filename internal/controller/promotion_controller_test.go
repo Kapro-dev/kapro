@@ -159,6 +159,45 @@ func TestPromotionStampsFirstAttempt(t *testing.T) {
 	}
 }
 
+func TestPromotionUsesDeliveryUnitDefaultPlanForTargetSetFleet(t *testing.T) {
+	ctx := context.Background()
+	fleet := newKapro("checkout")
+	fleet.Spec.SourceRef = ""
+	fleet.Spec.Source = nil
+	fleet.Spec.Plan = kaprov1alpha1.KaproPlan{}
+	unit := &kaprov1alpha1.DeliveryUnit{
+		ObjectMeta: metav1.ObjectMeta{Name: "checkout"},
+		Spec: kaprov1alpha1.DeliveryUnitSpec{
+			DefaultPlanRef: "progressive",
+			Source: kaprov1alpha1.SourceSpec{
+				Units: []kaprov1alpha1.Unit{{Name: "api"}},
+			},
+		},
+	}
+	promotion := newPromotion("checkout-v1", "checkout", "v1.2.3")
+	r, c := newPromotionReconciler(t, fleet, unit, promotion)
+
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: promotion.Name}}); err != nil {
+		t.Fatal(err)
+	}
+	var runs kaproruntimev1alpha1.PromotionRunList
+	if err := c.List(ctx, &runs); err != nil {
+		t.Fatal(err)
+	}
+	if len(runs.Items) != 1 {
+		t.Fatalf("len(runs) = %d, want 1", len(runs.Items))
+	}
+	if got := runs.Items[0].Spec.DeliveryUnitRef; got != "checkout" {
+		t.Fatalf("run deliveryUnitRef = %q, want checkout", got)
+	}
+	if got := runs.Items[0].Spec.FleetRef; got != "checkout" {
+		t.Fatalf("run fleetRef = %q, want checkout", got)
+	}
+	if len(runs.Items[0].Spec.Plans) != 1 || runs.Items[0].Spec.Plans[0].Plan != "progressive" {
+		t.Fatalf("run plans = %#v, want default progressive plan", runs.Items[0].Spec.Plans)
+	}
+}
+
 func TestPromotionSpecChangeStampsNewAttemptAndSupersedes(t *testing.T) {
 	ctx := context.Background()
 	p := newPromotion("checkout-rolling", "checkout", "v1.2.3")
@@ -264,15 +303,19 @@ func TestPromotionSuspendedSuspendsActiveRuns(t *testing.T) {
 }
 
 func TestPromotionSpecHashStableAndDriftDetectable(t *testing.T) {
-	a := kaprov1alpha1.PromotionSpec{FleetRef: "checkout", Version: "v1"}
-	b := kaprov1alpha1.PromotionSpec{FleetRef: "checkout", Version: "v1"}
-	c := kaprov1alpha1.PromotionSpec{FleetRef: "checkout", Version: "v2"}
+	a := kaprov1alpha1.PromotionSpec{DeliveryUnitRef: "checkout", FleetRef: "checkout", Version: "v1"}
+	b := kaprov1alpha1.PromotionSpec{DeliveryUnitRef: "checkout", FleetRef: "checkout", Version: "v1"}
+	c := kaprov1alpha1.PromotionSpec{DeliveryUnitRef: "checkout", FleetRef: "checkout", Version: "v2"}
+	d := kaprov1alpha1.PromotionSpec{DeliveryUnitRef: "payments", FleetRef: "checkout", Version: "v1"}
 
 	if promotionSpecHash(&a) != promotionSpecHash(&b) {
 		t.Fatal("identical specs should hash equal")
 	}
 	if promotionSpecHash(&a) == promotionSpecHash(&c) {
 		t.Fatal("version change must produce different hash")
+	}
+	if promotionSpecHash(&a) == promotionSpecHash(&d) {
+		t.Fatal("deliveryUnitRef change must produce different hash")
 	}
 }
 
