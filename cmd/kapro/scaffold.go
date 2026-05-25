@@ -233,18 +233,24 @@ func writeScaffoldFiles(root string, files map[string]string, force bool) error 
 			}
 			return err
 		}
-		if !force {
-			if _, err := os.Stat(absPath); err == nil {
+		if info, err := os.Lstat(absPath); err == nil {
+			if info.Mode()&os.ModeSymlink != 0 {
+				if sp != nil {
+					sp.StopFail("Could not write starter files")
+				}
+				return fmt.Errorf("refusing to write through symlink scaffold path: %q", relPath)
+			}
+			if !force {
 				if sp != nil {
 					sp.StopFail("Could not write starter files")
 				}
 				return fmt.Errorf("%s already exists; use --force to overwrite", absPath)
-			} else if !os.IsNotExist(err) {
-				if sp != nil {
-					sp.StopFail("Could not inspect starter files")
-				}
-				return err
 			}
+		} else if !os.IsNotExist(err) {
+			if sp != nil {
+				sp.StopFail("Could not inspect starter files")
+			}
+			return err
 		}
 		if err := os.MkdirAll(filepath.Dir(absPath), 0755); err != nil {
 			if sp != nil {

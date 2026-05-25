@@ -343,6 +343,31 @@ func TestWriteScaffoldFilesRejectsSymlinkEscape(t *testing.T) {
 	}
 }
 
+func TestWriteScaffoldFilesRejectsFinalSymlinkWithForce(t *testing.T) {
+	root := t.TempDir()
+	outside := filepath.Join(t.TempDir(), "deployment.yaml")
+	if err := os.WriteFile(outside, []byte("original"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	appDir := filepath.Join(root, "apps", "checkout")
+	if err := os.MkdirAll(appDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(appDir, "deployment.yaml")); err != nil {
+		t.Fatal(err)
+	}
+
+	err := writeScaffoldFiles(root, map[string]string{
+		filepath.Join("apps", "checkout", "deployment.yaml"): "pwn",
+	}, true)
+	if err == nil || !strings.Contains(err.Error(), "through symlink scaffold path") {
+		t.Fatalf("err=%v, want final symlink validation error", err)
+	}
+	if got := readFile(t, outside); got != "original" {
+		t.Fatalf("outside file should not be overwritten, got %q", got)
+	}
+}
+
 func TestRunConnectScaffoldFlux(t *testing.T) {
 	dir := t.TempDir()
 	err := runConnectScaffold(connectOptions{
