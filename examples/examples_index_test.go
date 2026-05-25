@@ -3,6 +3,7 @@ package examples_test
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -67,6 +68,56 @@ func TestEveryExampleDirectoryHasReadme(t *testing.T) {
 		readme := filepath.Join(path, "README.md")
 		if _, err := os.Stat(readme); err != nil {
 			t.Errorf("%s is missing README.md", path)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestEveryExampleDirectoryHasRunScript(t *testing.T) {
+	if err := filepath.WalkDir(".", func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !entry.IsDir() {
+			return nil
+		}
+		if strings.HasPrefix(entry.Name(), ".") {
+			return filepath.SkipDir
+		}
+		runScript := filepath.Join(path, "run.sh")
+		info, err := os.Stat(runScript)
+		if err != nil {
+			t.Errorf("%s is missing run.sh", path)
+			return nil
+		}
+		if info.Mode()&0111 == 0 {
+			t.Errorf("%s is not executable", runScript)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestEveryExampleRunScriptHasValidSyntax(t *testing.T) {
+	if err := filepath.WalkDir(".", func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			if strings.HasPrefix(entry.Name(), ".") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if entry.Name() != "run.sh" && entry.Name() != "run-example.sh" {
+			return nil
+		}
+		output, err := exec.Command("bash", "-n", path).CombinedOutput()
+		if err != nil {
+			t.Errorf("%s has invalid bash syntax: %v\n%s", path, err, output)
 		}
 		return nil
 	}); err != nil {

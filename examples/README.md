@@ -23,6 +23,25 @@ Operators can jump to `08-monitoring/`, `10-kind-demo/`, and `11-rbac/`.
 Extension authors should start with `05-plugins/`, then `06-sdk-go/`, then the
 minimal custom actuator in `07-actuator-hello-world/`.
 
+Every example directory includes a `run.sh` wrapper. The default command is a
+safe local check:
+
+```bash
+./examples/run.sh
+./examples/00-deliveryunit-lessons/00-hello-world/run.sh
+./examples/06-sdk-go/00-promote-with-builder/run.sh test
+```
+
+Use `apply` for Kubernetes YAML examples, `run` for Go examples, and `oci-prep`
+when you want the runner to start a local zot registry and push a small ORAS
+artifact for OCI lessons:
+
+```bash
+./examples/00-deliveryunit-lessons/00-hello-world/run.sh apply
+./examples/06-sdk-go/00-promote-with-builder/run.sh run
+./examples/01-quickstarts/03-oci/run.sh oci-prep
+```
+
 ## Local Lab
 
 The full local cycle is the Kind demo:
