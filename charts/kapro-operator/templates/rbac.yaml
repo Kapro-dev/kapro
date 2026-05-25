@@ -194,6 +194,8 @@ rules:
   - fleets
   - plans
   - promotions
+  - sources
+  - triggers
   verbs:
   - create
   - delete

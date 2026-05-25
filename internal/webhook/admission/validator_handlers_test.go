@@ -89,6 +89,18 @@ func TestPromotionTriggerValidatorHandleDeniesInvalidSource(t *testing.T) {
 	}
 }
 
+func TestPromotionTriggerValidatorHandleDeniesMissingDeliveryUnitRef(t *testing.T) {
+	validator := admission.NewPromotionTriggerValidator(newKaproAdmissionDecoder(t))
+	trigger := kaproAdmissionTrigger()
+	trigger.Labels = map[string]string{admission.LabelKaproTeam: "checkout"}
+	trigger.Spec.PromotionTemplate.DeliveryUnitRef = ""
+
+	resp := validator.Handle(context.Background(), admissionRequest(t, admissionv1.Create, trigger))
+	if resp.Allowed || !strings.Contains(responseMessage(resp), "spec.promotionTemplate.deliveryUnitRef") {
+		t.Fatalf("expected missing deliveryUnitRef denial, allowed=%t message=%q", resp.Allowed, responseMessage(resp))
+	}
+}
+
 func TestPromotionTriggerValidatorHandleDeniesInvalidDurations(t *testing.T) {
 	validator := admission.NewPromotionTriggerValidator(newKaproAdmissionDecoder(t))
 	trigger := kaproAdmissionTrigger()
@@ -301,8 +313,9 @@ func kaproAdmissionTrigger() *kaprov1alpha1.Trigger {
 				},
 			},
 			PromotionTemplate: kaprov1alpha1.TriggerTemplate{
-				FleetRef: "checkout",
-				Plans:    []kaprov1alpha1.PlanRef{{Name: "standard"}},
+				DeliveryUnitRef: "checkout",
+				FleetRef:        "checkout",
+				Plans:           []kaprov1alpha1.PlanRef{{Name: "standard"}},
 			},
 		},
 	}

@@ -17,8 +17,9 @@ func validTrigger() *kaprov1alpha1.Trigger {
 				},
 			},
 			PromotionTemplate: kaprov1alpha1.TriggerTemplate{
-				FleetRef: "checkout",
-				Plans:    []kaprov1alpha1.PlanRef{{Name: "default-plan"}},
+				DeliveryUnitRef: "checkout",
+				FleetRef:        "checkout",
+				Plans:           []kaprov1alpha1.PlanRef{{Name: "default-plan"}},
 			},
 		},
 	}
@@ -85,6 +86,14 @@ func TestValidatePromotionTrigger_TemplateMissingFleetRef(t *testing.T) {
 	pt.Spec.PromotionTemplate.FleetRef = ""
 	if err := validatePromotionTrigger(pt); err == nil {
 		t.Fatal("expected error for missing fleetRef")
+	}
+}
+
+func TestValidatePromotionTrigger_TemplateMissingDeliveryUnitRef(t *testing.T) {
+	pt := validTrigger()
+	pt.Spec.PromotionTemplate.DeliveryUnitRef = ""
+	if err := validatePromotionTrigger(pt); err == nil {
+		t.Fatal("expected error for missing deliveryUnitRef")
 	}
 }
 
