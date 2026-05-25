@@ -19,6 +19,7 @@ package webhook
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"net/http"
@@ -29,6 +30,7 @@ import (
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -112,13 +114,8 @@ func (s *Server) handleApprove(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "token bound to different promotionrun instance", http.StatusConflict)
 		return
 	}
-	var target kaproruntimev1alpha1.Target
-	if err := s.Client.Get(ctx, client.ObjectKey{Name: targetKey}, &target); err != nil {
-		http.Error(w, "target entry not found", http.StatusNotFound)
-		return
-	}
-	if target.Spec.PromotionRunRef != claims.PromotionRun {
-		http.Error(w, "target/promotionrun mismatch", http.StatusConflict)
+	if _, err := s.claimDecisionToken(ctx, targetKey, claims); err != nil {
+		s.writeDecisionTokenClaimError(w, err)
 		return
 	}
 
@@ -188,13 +185,9 @@ func (s *Server) handleReject(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "token bound to different promotionrun instance", http.StatusConflict)
 		return
 	}
-	var target kaproruntimev1alpha1.Target
-	if err := s.Client.Get(ctx, client.ObjectKey{Name: targetKey}, &target); err != nil {
-		http.Error(w, "target entry not found", http.StatusNotFound)
-		return
-	}
-	if target.Spec.PromotionRunRef != claims.PromotionRun {
-		http.Error(w, "target/promotionrun mismatch", http.StatusConflict)
+	target, err := s.claimDecisionToken(ctx, targetKey, claims)
+	if err != nil {
+		s.writeDecisionTokenClaimError(w, err)
 		return
 	}
 
@@ -219,7 +212,7 @@ func (s *Server) handleReject(w http.ResponseWriter, r *http.Request) {
 	patch := client.MergeFrom(target.DeepCopy())
 	target.Status.Rejected = true
 	target.Status.RejectedBy = rejectedBy
-	if err := s.Client.Status().Patch(ctx, &target, patch); err != nil {
+	if err := s.Client.Status().Patch(ctx, target, patch); err != nil {
 		log.FromContext(ctx).Error(err, "patch PromotionTarget rejection failed")
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -286,6 +279,16 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 // headroom for future fields without crossing into pathological territory.
 const maxApprovalTokenLen = 4 * 1024
 
+const (
+	approvalDecisionTokenJTIAnnotation    = "kapro.io/approval-token-jti"
+	approvalDecisionTokenActionAnnotation = "kapro.io/approval-token-action"
+)
+
+var (
+	errApprovalTokenAlreadyRedeemed = errors.New("approval token already redeemed")
+	errTargetPromotionRunMismatch   = errors.New("target/promotionrun mismatch")
+)
+
 func (s *Server) verifyToken(r *http.Request, expectedAction string) (*token.Claims, error) {
 	if r.URL.RawQuery != "" {
 		return nil, fmt.Errorf("approval tokens must be sent in Authorization bearer headers, not query strings")
@@ -306,7 +309,57 @@ func (s *Server) verifyToken(r *http.Request, expectedAction string) (*token.Cla
 	if claims.Action != expectedAction {
 		return nil, fmt.Errorf("token action %q cannot be used for %s", claims.Action, expectedAction)
 	}
+	if claims.JTI == "" {
+		return nil, fmt.Errorf("token missing jti")
+	}
 	return claims, nil
+}
+
+func (s *Server) claimDecisionToken(ctx context.Context, targetKey string, claims *token.Claims) (*kaproruntimev1alpha1.Target, error) {
+	var claimed kaproruntimev1alpha1.Target
+	err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		var target kaproruntimev1alpha1.Target
+		if err := s.Client.Get(ctx, client.ObjectKey{Name: targetKey}, &target); err != nil {
+			return err
+		}
+		if target.Spec.PromotionRunRef != claims.PromotionRun {
+			return errTargetPromotionRunMismatch
+		}
+		annotations := target.GetAnnotations()
+		if annotations[approvalDecisionTokenJTIAnnotation] != "" {
+			return errApprovalTokenAlreadyRedeemed
+		}
+		if annotations == nil {
+			annotations = make(map[string]string, 2)
+		}
+		annotations[approvalDecisionTokenJTIAnnotation] = claims.JTI
+		annotations[approvalDecisionTokenActionAnnotation] = claims.Action
+		target.SetAnnotations(annotations)
+		if err := s.Client.Update(ctx, &target); err != nil {
+			return err
+		}
+		claimed = target
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &claimed, nil
+}
+
+func (s *Server) writeDecisionTokenClaimError(w http.ResponseWriter, err error) {
+	switch {
+	case apierrors.IsNotFound(err):
+		http.Error(w, "target entry not found", http.StatusNotFound)
+	case errors.Is(err, errTargetPromotionRunMismatch):
+		http.Error(w, "target/promotionrun mismatch", http.StatusConflict)
+	case errors.Is(err, errApprovalTokenAlreadyRedeemed):
+		writeJSON(w, http.StatusConflict, map[string]string{
+			"status": "token_already_redeemed",
+		})
+	default:
+		http.Error(w, "internal error", http.StatusInternalServerError)
+	}
 }
 
 var decisionPageTemplate = template.Must(template.New("approval-decision").Parse(`<!doctype html>

@@ -764,8 +764,11 @@ func (r *PromotionReconciler) emitPhaseTransitionEvent(p *kaprov1alpha1.Promotio
 const promotionFleetRefIndex = "spec.fleetRef"
 
 func (r *PromotionReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	ctx, cancel := fieldIndexerSetupContext()
+	defer cancel()
+
 	if err := mgr.GetFieldIndexer().IndexField(
-		context.Background(),
+		ctx,
 		&kaprov1alpha1.Promotion{},
 		promotionFleetRefIndex,
 		func(obj client.Object) []string {

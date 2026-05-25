@@ -1487,7 +1487,8 @@ func (r *PromotionRunReconciler) handleDeletion(ctx context.Context, promotionru
 }
 
 func (r *PromotionRunReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	ctx := context.Background()
+	ctx, cancel := fieldIndexerSetupContext()
+	defer cancel()
 
 	// Index Approvals by promotionrun label — used to map Approval changes back to
 	// the owning PromotionRun.

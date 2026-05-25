@@ -358,8 +358,11 @@ func adapterPolicySyncInterval(raw string) time.Duration {
 }
 
 func (r *SubstrateDiscoveryPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	ctx, cancel := fieldIndexerSetupContext()
+	defer cancel()
+
 	if err := mgr.GetFieldIndexer().IndexField(
-		context.Background(),
+		ctx,
 		&kaprov1alpha1.SubstrateDiscoveryPolicy{},
 		adapterPolicySubstrateRefIndex,
 		func(obj client.Object) []string {

@@ -302,6 +302,9 @@ func TestBuildApprovalURLs_SingleApproverHintSignedIntoToken(t *testing.T) {
 	if claims.ApprovedBy != "alice@example.com" {
 		t.Fatalf("expected ApprovedBy claim to be signed, got %q", claims.ApprovedBy)
 	}
+	if claims.JTI == "" {
+		t.Fatal("expected approval token JTI to be signed")
+	}
 }
 
 func TestAdvanceTargetUntilStable_CollapsesImmediateTransitions(t *testing.T) {

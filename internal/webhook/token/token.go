@@ -1,7 +1,8 @@
 // Package token provides HMAC-SHA256 signed tokens for Kapro approval webhooks.
 //
-// Tokens are self-contained: all claims needed to create the Approval CR or
-// reject the Promotion are encoded in the token itself. No server-side session state.
+// Tokens carry all claims needed to create the Approval CR or reject the
+// Promotion. The webhook server records each token's JTI on the Target before
+// accepting a decision, making tokens single-use for a PromotionRun target.
 //
 // Format: base64url(json_claims) + "." + base64url(hmac_sha256_sig)
 //
@@ -11,6 +12,7 @@ package token
 
 import (
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
@@ -35,6 +37,9 @@ type Claims struct {
 	UID string `json:"uid"`
 	// Action is "approve" or "reject".
 	Action string `json:"a"`
+	// JTI is a random token ID. The webhook server records it before accepting
+	// the decision, so a token cannot be replayed within the same PromotionRun.
+	JTI string `json:"jti"`
 	// ApprovedBy is the identity of the approver (email, username, service account).
 	// Set by the notification system from SSO/OIDC context when the token is minted.
 	// The webhook server uses this to populate Approval.spec.approvedBy — it cannot
@@ -48,12 +53,24 @@ type Claims struct {
 // corporate approval workflows while limiting window for token leak abuse.
 const DefaultTTL = 48 * time.Hour
 
+// NewJTI returns a random URL-safe token identifier.
+func NewJTI() (string, error) {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", fmt.Errorf("token: generate jti: %w", err)
+	}
+	return base64.RawURLEncoding.EncodeToString(b[:]), nil
+}
+
 // Sign encodes claims as JSON and appends an HMAC-SHA256 signature.
 // Returns a URL-safe token with no padding.
 // Returns an error if secret is empty — callers must not mint tokens without a real key.
 func Sign(c Claims, secret []byte) (string, error) {
 	if len(secret) == 0 {
 		return "", fmt.Errorf("token: Sign called with empty secret — configure approval-secret")
+	}
+	if c.JTI == "" {
+		return "", fmt.Errorf("token: missing jti")
 	}
 	payload, err := json.Marshal(c)
 	if err != nil {
@@ -99,6 +116,9 @@ func Verify(token string, secret []byte) (*Claims, error) {
 
 	if time.Now().Unix() > c.Exp {
 		return nil, fmt.Errorf("token: expired")
+	}
+	if c.JTI == "" {
+		return nil, fmt.Errorf("token: missing jti")
 	}
 	return &c, nil
 }

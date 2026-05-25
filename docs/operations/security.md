@@ -201,8 +201,9 @@ Human approvals are also gates. The approval admission path should set
 `spec.bypass` to emergency groups.
 
 Approval webhook links keep signed tokens in browser-only URL fragments and
-submit decisions with `Authorization: Bearer` POST requests. Do not place
-approval tokens in query strings, status fields, Events, or logs.
+submit decisions with `Authorization: Bearer` POST requests. Tokens carry a
+random `jti` and are redeemed once per target decision; do not place approval
+tokens in query strings, status fields, Events, or logs.
 
 ## Secret Handling
 

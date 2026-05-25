@@ -234,6 +234,10 @@ func buildApprovalURLs(externalURL string, secret []byte, promotionrun *kaprorun
 
 	approveClaims := baseClaims
 	approveClaims.Action = "approve"
+	approveClaims.JTI, err = token.NewJTI()
+	if err != nil {
+		return "", "", err
+	}
 	approveToken, err := token.Sign(approveClaims, secret)
 	if err != nil {
 		return "", "", fmt.Errorf("sign approve token: %w", err)
@@ -241,6 +245,10 @@ func buildApprovalURLs(externalURL string, secret []byte, promotionrun *kaprorun
 
 	rejectClaims := baseClaims
 	rejectClaims.Action = "reject"
+	rejectClaims.JTI, err = token.NewJTI()
+	if err != nil {
+		return "", "", err
+	}
 	rejectToken, err := token.Sign(rejectClaims, secret)
 	if err != nil {
 		return "", "", fmt.Errorf("sign reject token: %w", err)
