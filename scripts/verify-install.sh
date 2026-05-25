@@ -37,9 +37,9 @@ Environment for release-render and release-cluster modes:
   KAPRO_RELEASE_CHART_URL     Optional chart package URL override
   KAPRO_PREVIOUS_RELEASE_VERSION Previous release tag for supported upgrade/rollback modes (default: current release tag)
   KAPRO_PREVIOUS_RELEASE_CHART_URL Optional previous chart package URL override
-  KAPRO_PREVIOUS_VERIFY_EXPECTED_CRDS Override previous-release CRD checks in upgrade/rollback modes
-  KAPRO_PREVIOUS_VERIFY_AUTH_CAN_I Override previous-release RBAC checks in upgrade/rollback modes
-  KAPRO_PREVIOUS_VERIFY_WEBHOOKS Override previous-release webhook checks in upgrade/rollback modes
+  KAPRO_PREVIOUS_VERIFY_EXPECTED_CRDS Override previous-release CRD checks (true|false; default: true for same major.minor line, else false)
+  KAPRO_PREVIOUS_VERIFY_AUTH_CAN_I Override previous-release RBAC checks (true|false; default: true for same major.minor line, else false)
+  KAPRO_PREVIOUS_VERIFY_WEBHOOKS Override previous-release webhook checks (true|false; default: true for same major.minor line, else false)
 EOF
 }
 
@@ -261,9 +261,29 @@ apply_chart_crds() {
 }
 
 release_minor() {
-  local version
+  local version core major minor rest
   version="${1#v}"
-  printf '%s\n' "${version%.*}"
+  core="${version%%-*}"
+  core="${core%%+*}"
+  IFS=. read -r major minor rest <<<"${core}"
+  if [[ ! "${major}" =~ ^[0-9]+$ || ! "${minor}" =~ ^[0-9]+$ ]]; then
+    echo "invalid release tag ${1}: expected vMAJOR.MINOR[.PATCH][-PRERELEASE][+BUILD]" >&2
+    return 1
+  fi
+  printf '%s.%s\n' "${major}" "${minor}"
+}
+
+previous_release_verify_defaults() {
+  local previous current previous_minor current_minor
+  previous="$1"
+  current="$2"
+  previous_minor="$(release_minor "${previous}")"
+  current_minor="$(release_minor "${current}")"
+  if [ "${previous_minor}" = "${current_minor}" ]; then
+    printf 'true true true\n'
+  else
+    printf 'false false false\n'
+  fi
 }
 
 cluster() {
@@ -279,18 +299,12 @@ release_cluster() (
 )
 
 release_upgrade_cluster() (
-  local current previous current_chart previous_chart cleanup previous_expected_crds previous_auth_can_i previous_webhooks
+  local current previous current_chart previous_chart cleanup previous_defaults previous_expected_crds previous_auth_can_i previous_webhooks
   current="${KAPRO_RELEASE_VERSION:-v0.6.0}"
   previous="${KAPRO_PREVIOUS_RELEASE_VERSION:-${current}}"
   cleanup="${KAPRO_VERIFY_CLEANUP:-false}"
-  previous_expected_crds=false
-  previous_auth_can_i=false
-  previous_webhooks=false
-  if [ "$(release_minor "${previous}")" = "$(release_minor "${current}")" ]; then
-    previous_expected_crds=true
-    previous_auth_can_i=true
-    previous_webhooks=true
-  fi
+  previous_defaults="$(previous_release_verify_defaults "${previous}" "${current}")"
+  read -r previous_expected_crds previous_auth_can_i previous_webhooks <<<"${previous_defaults}"
   previous_expected_crds="${KAPRO_PREVIOUS_VERIFY_EXPECTED_CRDS:-${previous_expected_crds}}"
   previous_auth_can_i="${KAPRO_PREVIOUS_VERIFY_AUTH_CAN_I:-${previous_auth_can_i}}"
   previous_webhooks="${KAPRO_PREVIOUS_VERIFY_WEBHOOKS:-${previous_webhooks}}"
@@ -315,20 +329,14 @@ release_upgrade_cluster() (
 )
 
 release_rollback_cluster() (
-  local current previous current_chart previous_chart cleanup namespace release previous_expected_crds previous_auth_can_i previous_webhooks
+  local current previous current_chart previous_chart cleanup namespace release previous_defaults previous_expected_crds previous_auth_can_i previous_webhooks
   current="${KAPRO_RELEASE_VERSION:-v0.6.0}"
   previous="${KAPRO_PREVIOUS_RELEASE_VERSION:-${current}}"
   cleanup="${KAPRO_VERIFY_CLEANUP:-false}"
   namespace="${KAPRO_VERIFY_NAMESPACE:-kapro-system}"
   release="${KAPRO_VERIFY_RELEASE:-kapro}"
-  previous_expected_crds=false
-  previous_auth_can_i=false
-  previous_webhooks=false
-  if [ "$(release_minor "${previous}")" = "$(release_minor "${current}")" ]; then
-    previous_expected_crds=true
-    previous_auth_can_i=true
-    previous_webhooks=true
-  fi
+  previous_defaults="$(previous_release_verify_defaults "${previous}" "${current}")"
+  read -r previous_expected_crds previous_auth_can_i previous_webhooks <<<"${previous_defaults}"
   previous_expected_crds="${KAPRO_PREVIOUS_VERIFY_EXPECTED_CRDS:-${previous_expected_crds}}"
   previous_auth_can_i="${KAPRO_PREVIOUS_VERIFY_AUTH_CAN_I:-${previous_auth_can_i}}"
   previous_webhooks="${KAPRO_PREVIOUS_VERIFY_WEBHOOKS:-${previous_webhooks}}"
