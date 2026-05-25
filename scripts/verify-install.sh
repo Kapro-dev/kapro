@@ -35,7 +35,7 @@ Environment for cluster mode:
 Environment for release-render and release-cluster modes:
   KAPRO_RELEASE_VERSION       Release tag to verify (default: v0.6.0)
   KAPRO_RELEASE_CHART_URL     Optional chart package URL override
-  KAPRO_PREVIOUS_RELEASE_VERSION Previous release tag for upgrade/rollback modes (default: v0.5.7)
+  KAPRO_PREVIOUS_RELEASE_VERSION Previous release tag for supported upgrade/rollback modes (default: current release tag)
   KAPRO_PREVIOUS_RELEASE_CHART_URL Optional previous chart package URL override
 EOF
 }
@@ -272,7 +272,7 @@ release_cluster() (
 release_upgrade_cluster() (
   local current previous current_chart previous_chart cleanup
   current="${KAPRO_RELEASE_VERSION:-v0.6.0}"
-  previous="${KAPRO_PREVIOUS_RELEASE_VERSION:-v0.5.7}"
+  previous="${KAPRO_PREVIOUS_RELEASE_VERSION:-${current}}"
   cleanup="${KAPRO_VERIFY_CLEANUP:-false}"
 
   previous_chart="$(download_chart_version "${previous}" "${KAPRO_PREVIOUS_RELEASE_CHART_URL:-}")" || exit 1
@@ -297,7 +297,7 @@ release_upgrade_cluster() (
 release_rollback_cluster() (
   local current previous current_chart previous_chart cleanup namespace release
   current="${KAPRO_RELEASE_VERSION:-v0.6.0}"
-  previous="${KAPRO_PREVIOUS_RELEASE_VERSION:-v0.5.7}"
+  previous="${KAPRO_PREVIOUS_RELEASE_VERSION:-${current}}"
   cleanup="${KAPRO_VERIFY_CLEANUP:-false}"
   namespace="${KAPRO_VERIFY_NAMESPACE:-kapro-system}"
   release="${KAPRO_VERIFY_RELEASE:-kapro}"
