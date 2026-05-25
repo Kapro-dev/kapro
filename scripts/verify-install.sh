@@ -28,6 +28,8 @@ Environment for cluster mode:
   KAPRO_IMAGE_TAG            Optional image tag override
   KAPRO_VERIFY_WEBHOOKS      Enable admission webhooks (default: true)
   KAPRO_VERIFY_EXPECTED_CRDS Check current expected CRDs after install (default: true)
+  KAPRO_VERIFY_AUTH_CAN_I    Check operator RBAC for KAPRO_VERIFY_AUTH_RESOURCE (default: true)
+  KAPRO_VERIFY_AUTH_RESOURCE Resource used by the RBAC check (default: promotionruns.runtime.kapro.io)
   KAPRO_VERIFY_CLEANUP       Uninstall the Helm release and namespace after verification (default: false)
 
 Environment for release-render and release-cluster modes:
@@ -195,8 +197,12 @@ verify_installed_chart() {
     kubectl get "validatingwebhookconfiguration/${release}-kapro-operator"
     kubectl get "mutatingwebhookconfiguration/${release}-kapro-operator"
   fi
-  kubectl auth can-i get promotionruns.runtime.kapro.io \
-    --as="system:serviceaccount:${namespace}:${release}-kapro-operator"
+  if [ "${KAPRO_VERIFY_AUTH_CAN_I:-true}" = "true" ]; then
+    local auth_resource
+    auth_resource="${KAPRO_VERIFY_AUTH_RESOURCE:-promotionruns.runtime.kapro.io}"
+    kubectl auth can-i get "${auth_resource}" \
+      --as="system:serviceaccount:${namespace}:${release}-kapro-operator"
+  fi
 }
 
 install_chart() {
@@ -274,7 +280,12 @@ release_upgrade_cluster() (
   trap 'rm -rf "$(dirname "${previous_chart}")" "$(dirname "${current_chart}")"' EXIT
 
   echo "installing previous release ${previous} before upgrade"
-  KAPRO_VERIFY_CLEANUP=false KAPRO_VERIFY_EXPECTED_CRDS=false KAPRO_VERIFY_WEBHOOKS="${KAPRO_PREVIOUS_VERIFY_WEBHOOKS:-false}" KAPRO_IMAGE_TAG="${KAPRO_PREVIOUS_IMAGE_TAG:-${previous}}" install_chart "${previous_chart}"
+  KAPRO_VERIFY_CLEANUP=false \
+    KAPRO_VERIFY_EXPECTED_CRDS=false \
+    KAPRO_VERIFY_AUTH_CAN_I="${KAPRO_PREVIOUS_VERIFY_AUTH_CAN_I:-false}" \
+    KAPRO_VERIFY_WEBHOOKS="${KAPRO_PREVIOUS_VERIFY_WEBHOOKS:-false}" \
+    KAPRO_IMAGE_TAG="${KAPRO_PREVIOUS_IMAGE_TAG:-${previous}}" \
+    install_chart "${previous_chart}"
 
   echo "upgrading ${previous} to ${current}"
   echo "applying ${current} CRDs before Helm upgrade"
@@ -296,7 +307,12 @@ release_rollback_cluster() (
   trap 'rm -rf "$(dirname "${previous_chart}")" "$(dirname "${current_chart}")"' EXIT
 
   echo "installing previous release ${previous} before rollback smoke"
-  KAPRO_VERIFY_CLEANUP=false KAPRO_VERIFY_EXPECTED_CRDS=false KAPRO_VERIFY_WEBHOOKS="${KAPRO_PREVIOUS_VERIFY_WEBHOOKS:-false}" KAPRO_IMAGE_TAG="${KAPRO_PREVIOUS_IMAGE_TAG:-${previous}}" install_chart "${previous_chart}"
+  KAPRO_VERIFY_CLEANUP=false \
+    KAPRO_VERIFY_EXPECTED_CRDS=false \
+    KAPRO_VERIFY_AUTH_CAN_I="${KAPRO_PREVIOUS_VERIFY_AUTH_CAN_I:-false}" \
+    KAPRO_VERIFY_WEBHOOKS="${KAPRO_PREVIOUS_VERIFY_WEBHOOKS:-false}" \
+    KAPRO_IMAGE_TAG="${KAPRO_PREVIOUS_IMAGE_TAG:-${previous}}" \
+    install_chart "${previous_chart}"
 
   echo "upgrading ${previous} to ${current} before rollback"
   echo "applying ${current} CRDs before Helm upgrade"
