@@ -20,3 +20,13 @@ selectors, and dashboard datasource UIDs for your observability stack.
 Runbooks for the alerts are documented in `docs/operations.md`; the metric
 inventory and alert mapping are documented in `docs/monitoring.md`; SLI
 definitions and recommended thresholds are documented in `docs/operator-slos.md`.
+
+Apply the Kubernetes monitoring assets from the repository root:
+
+```bash
+kubectl apply -f examples/08-monitoring/prometheus-rules.yaml
+kubectl apply -f examples/08-monitoring/kube-state-metrics-crd-config.yaml
+```
+
+Import the Grafana JSON dashboards through your Grafana UI or provisioning
+system.

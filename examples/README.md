@@ -1,7 +1,68 @@
 # Examples
 
-The examples tree is organized as indexed chapters. Lower numbers introduce
-smaller concepts; higher numbers cover richer or more specialized workflows.
+The examples tree is organized as indexed chapters. Start with the lowest
+number that matches what you want to learn; higher numbers cover richer or more
+specialized workflows.
+
+## Learning Path
+
+New users should start with `00-deliveryunit-lessons/`. Those folders are a
+lesson-by-lesson tour: hello world, source defaults, rollout defaults,
+Promotion, multiple units, ordering, overrides, per-unit versions, and safe
+triggers.
+
+After that, use `01-quickstarts/` to apply a complete working shape for your
+substrate:
+
+- `00-flux/` for the default GitOps quickstart.
+- `01-direct/` for direct Kubernetes apply.
+- `02-argo/` for Argo CD.
+- `03-oci/` for OCI bundle pull mode.
+
+Operators can jump to `08-monitoring/`, `10-kind-demo/`, and `11-rbac/`.
+Extension authors should start with `05-plugins/`, then `06-sdk-go/`, then the
+minimal custom actuator in `07-actuator-hello-world/`.
+
+## Local Lab
+
+The full local cycle is the Kind demo:
+
+```bash
+scripts/kind-demo.sh up
+scripts/kind-demo.sh status
+scripts/kind-demo.sh approve
+scripts/kind-demo.sh down
+```
+
+For examples that need a Kubernetes API, use a local Kind cluster with Kapro
+installed before applying manifests. For examples that reference OCI artifacts,
+use a local registry while learning:
+
+```bash
+kind create cluster --name kapro-examples
+docker run -d --restart=always -p 5001:5000 --name kapro-registry ghcr.io/project-zot/zot-linux-amd64:latest
+docker network connect kind kapro-registry || true
+kubectl cluster-info --context kind-kapro-examples
+```
+
+Use `localhost:5001` from your laptop and `kapro-registry:5000` from inside the
+Kind network. Replace `registry.example.com` placeholders in examples before
+expecting a registry-backed example to pull real artifacts.
+
+The OCI artifact workflow follows the ORAS quickstart pattern:
+
+```bash
+oras version
+echo "hello from kapro" > artifact.txt
+oras push --plain-http localhost:5001/kapro/hello-world:v0.1.0 \
+  --artifact-type application/vnd.kapro.example \
+  artifact.txt:text/plain
+oras pull --plain-http localhost:5001/kapro/hello-world:v0.1.0
+oras discover --plain-http localhost:5001/kapro/hello-world:v0.1.0
+```
+
+The ORAS project documents this flow with a local zot registry in its quickstart:
+https://oras.land/docs/quickstart/
 
 | Chapter | Topic |
 |---|---|
@@ -17,3 +78,16 @@ smaller concepts; higher numbers cover richer or more specialized workflows.
 | `09-archive/` | Long-term event archive sinks |
 | `10-kind-demo/` | Local demo environment assets |
 | `11-rbac/` | Recommended RBAC examples |
+
+## Validate Locally
+
+Use these checks before copying an example into docs, demos, or release notes:
+
+```bash
+go test ./examples/...
+scripts/validate-yaml-json
+python3 scripts/check-markdown-links.py examples
+```
+
+The CI suite also runs repository-wide tests and smoke coverage against these
+paths.
