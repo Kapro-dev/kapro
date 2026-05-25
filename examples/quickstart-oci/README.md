@@ -15,10 +15,10 @@ kubectl get promotions.kapro.io,promotionruns.runtime.kapro.io,targets.runtime.k
 ```
 
 The example uses anonymous `ghcr.io/example/...` placeholders. Replace
-`spec.delivery.parameters.repository` and registry settings with registries
+`spec.substrate.parameters.repository` and registry settings with registries
 your spokes can reach.
 
 OCI fields have different jobs:
 
 - `DeliveryUnit.spec.source.registries` is where chart or source units come from.
-- `delivery.parameters.repository` is what spoke-side OCI delivery pulls.
+- `substrate.parameters.repository` is what spoke-side OCI delivery pulls.

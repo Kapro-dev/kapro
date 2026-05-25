@@ -160,7 +160,7 @@ stamps immutable `PromotionRun` attempts and per-target `Target` records.
 - Live Argo CD Application writes require opt-in labels or annotations.
 - OCI pull delivery uses two-phase staging: server-side dry-run apply for every
   object first, then commit only when the whole staging pass succeeds. The
-  optional `spec.delivery.staging` API currently exposes this conservative
+  optional `spec.substrate.staging` API currently exposes this conservative
   `TwoPhase`/`Abort` contract without changing existing substrate defaults. This
   is validation-atomic before commit, not a Kubernetes transactional rollback:
   commit-phase infrastructure failures are reported and retried rather than

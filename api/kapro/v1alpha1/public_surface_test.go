@@ -124,6 +124,19 @@ func TestSubstrateCRDUsesPublicNaming(t *testing.T) {
 	}
 }
 
+func TestFleetAndClusterUseSubstrateBindingInSpec(t *testing.T) {
+	root := repoRoot(t)
+	for _, file := range []string{"kapro.io_fleets.yaml", "kapro.io_clusters.yaml"} {
+		props := crdSpecProperties(t, filepath.Join(root, "config", "crd", "bases", file))
+		if _, ok := props["substrate"]; !ok {
+			t.Fatalf("%s missing spec.substrate", file)
+		}
+		if _, ok := props["delivery"]; ok {
+			t.Fatalf("%s still exposes spec.delivery in the authored schema", file)
+		}
+	}
+}
+
 func TestGeneratedCRDsSyncedToChartAndBootstrap(t *testing.T) {
 	root := repoRoot(t)
 	for _, file := range crdFileSet(t, filepath.Join(root, "config", "crd", "bases")) {
@@ -199,6 +212,23 @@ func readCRD(t *testing.T, path string) crdDocument {
 		t.Fatalf("parse %s: %v", path, err)
 	}
 	return crd
+}
+
+func crdSpecProperties(t *testing.T, path string) map[string]any {
+	t.Helper()
+	var doc map[string]any
+	if err := yaml.Unmarshal(readFile(t, path), &doc); err != nil {
+		t.Fatalf("parse %s: %v", path, err)
+	}
+	spec := doc["spec"].(map[string]any)
+	versions := spec["versions"].([]any)
+	version := versions[0].(map[string]any)
+	schema := version["schema"].(map[string]any)
+	openapi := schema["openAPIV3Schema"].(map[string]any)
+	rootProps := openapi["properties"].(map[string]any)
+	specSchema := rootProps["spec"].(map[string]any)
+	props := specSchema["properties"].(map[string]any)
+	return props
 }
 
 func readFile(t *testing.T, path string) []byte {

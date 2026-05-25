@@ -9,7 +9,7 @@ metadata:
     kapro.io/team: platform
     app.kubernetes.io/name: checkout
 spec:
-  delivery:
+  substrate:
     mode: push
     substrateRef: argo
     parameters:

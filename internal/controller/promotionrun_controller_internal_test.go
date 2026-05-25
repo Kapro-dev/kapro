@@ -752,7 +752,7 @@ func TestListTargetsForStageScopesToPromotionRunFleet(t *testing.T) {
 			&kaprov1alpha1.Fleet{
 				ObjectMeta: metav1.ObjectMeta{Name: "checkout"},
 				Spec: kaprov1alpha1.FleetSpec{
-					Delivery: kaprov1alpha1.DeliverySpec{Mode: "push", SubstrateRef: "argo"},
+					Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: "push", SubstrateRef: "argo"},
 					Clusters: []kaprov1alpha1.ClusterRef{
 						{Name: "cluster-a", Labels: map[string]string{"stage": "canary"}},
 					},
@@ -882,7 +882,7 @@ func fleetClusterForStage(name, stage string) *kaprov1alpha1.Cluster {
 			Labels: map[string]string{"stage": stage},
 		},
 		Spec: kaprov1alpha1.ClusterSpec{
-			Delivery: kaprov1alpha1.DeliverySpec{Mode: "pull", SubstrateRef: "flux"},
+			Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: "pull", SubstrateRef: "flux"},
 		},
 	}
 }

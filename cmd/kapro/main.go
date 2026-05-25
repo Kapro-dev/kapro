@@ -253,7 +253,7 @@ func runClusterAdd(ctx context.Context, clusterName, providerName string, labels
 			Labels: labels,
 		},
 		Spec: kaprov1alpha1.ClusterSpec{
-			Delivery: kaprov1alpha1.DeliverySpec{
+			Substrate: kaprov1alpha1.SubstrateBindingSpec{
 				Mode: "pull", SubstrateRef: "flux",
 				Parameters: map[string]string{
 					"namespace":     "flux-system",
@@ -409,7 +409,7 @@ func runClusterSync(ctx context.Context, project string) error {
 				Labels: cluster.Labels,
 			},
 			Spec: kaprov1alpha1.ClusterSpec{
-				Delivery: kaprov1alpha1.DeliverySpec{
+				Substrate: kaprov1alpha1.SubstrateBindingSpec{
 					Mode: "push", SubstrateRef: "flux",
 					Parameters: map[string]string{
 						"resourceSet": "fleet-workloads",

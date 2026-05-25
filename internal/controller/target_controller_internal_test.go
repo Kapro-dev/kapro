@@ -101,8 +101,8 @@ func TestHandleApplyingSkipsConvergenceWhenObserveUnsupported(t *testing.T) {
 	cluster := &kaprov1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
 		Spec: kaprov1alpha1.ClusterSpec{
-			Delivery: kaprov1alpha1.DeliverySpec{
-				Mode:         kaprov1alpha1.DeliveryModePull,
+			Substrate: kaprov1alpha1.SubstrateBindingSpec{
+				Mode:         kaprov1alpha1.SubstrateModePull,
 				SubstrateRef: "flux",
 			},
 		},
@@ -135,7 +135,7 @@ func TestHandleApplyingSkipsConvergenceWhenObserveUnsupported(t *testing.T) {
 		Name: "pull/flux",
 		Capabilities: actuator.Capabilities{
 			Actuator:      "flux",
-			Modes:         []kaprov1alpha1.DeliveryMode{kaprov1alpha1.DeliveryModePull},
+			Modes:         []kaprov1alpha1.SubstrateMode{kaprov1alpha1.SubstrateModePull},
 			SupportsApply: true,
 		},
 		Actuator: act,
@@ -188,8 +188,8 @@ func TestHandleApplyingResolvesClassRefSubstrateToBuiltInActuator(t *testing.T) 
 	cluster := &kaprov1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
 		Spec: kaprov1alpha1.ClusterSpec{
-			Delivery: kaprov1alpha1.DeliverySpec{
-				Mode:         kaprov1alpha1.DeliveryModePush,
+			Substrate: kaprov1alpha1.SubstrateBindingSpec{
+				Mode:         kaprov1alpha1.SubstrateModePush,
 				SubstrateRef: "local-direct",
 			},
 		},
@@ -219,7 +219,7 @@ func TestHandleApplyingResolvesClassRefSubstrateToBuiltInActuator(t *testing.T) 
 		Name: "push/direct",
 		Capabilities: actuator.Capabilities{
 			Actuator:        "direct",
-			Modes:           []kaprov1alpha1.DeliveryMode{kaprov1alpha1.DeliveryModePush},
+			Modes:           []kaprov1alpha1.SubstrateMode{kaprov1alpha1.SubstrateModePush},
 			SupportsApply:   true,
 			SupportsObserve: true,
 			SupportsDelta:   true,
@@ -274,8 +274,8 @@ func TestHandleApplyingWaitsForNotReadySubstrate(t *testing.T) {
 	cluster := &kaprov1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
 		Spec: kaprov1alpha1.ClusterSpec{
-			Delivery: kaprov1alpha1.DeliverySpec{
-				Mode:         kaprov1alpha1.DeliveryModePush,
+			Substrate: kaprov1alpha1.SubstrateBindingSpec{
+				Mode:         kaprov1alpha1.SubstrateModePush,
 				SubstrateRef: "local-direct",
 			},
 		},
@@ -361,8 +361,8 @@ func TestHandleApplyingWaitsForStaleSubstrateReadiness(t *testing.T) {
 	cluster := &kaprov1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
 		Spec: kaprov1alpha1.ClusterSpec{
-			Delivery: kaprov1alpha1.DeliverySpec{
-				Mode:         kaprov1alpha1.DeliveryModePush,
+			Substrate: kaprov1alpha1.SubstrateBindingSpec{
+				Mode:         kaprov1alpha1.SubstrateModePush,
 				SubstrateRef: "local-direct",
 			},
 		},
@@ -595,8 +595,8 @@ func TestPromotionTargetReconcilePullOCIRecordsDesiredState(t *testing.T) {
 	cluster := &kaprov1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
 		Spec: kaprov1alpha1.ClusterSpec{
-			Delivery: kaprov1alpha1.DeliverySpec{
-				Mode:         kaprov1alpha1.DeliveryModePull,
+			Substrate: kaprov1alpha1.SubstrateBindingSpec{
+				Mode:         kaprov1alpha1.SubstrateModePull,
 				SubstrateRef: "oci",
 			},
 		},

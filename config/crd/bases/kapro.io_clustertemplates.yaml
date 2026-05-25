@@ -437,56 +437,6 @@ spec:
                         maximum: 100
                         minimum: 1
                         type: integer
-                      delivery:
-                        description: Delivery configures the substrate-neutral delivery
-                          adapter for this cluster.
-                        properties:
-                          mode:
-                            default: pull
-                            description: Mode controls who performs delivery.
-                            enum:
-                            - push
-                            - pull
-                            type: string
-                          parameters:
-                            additionalProperties:
-                              type: string
-                            description: |-
-                              Parameters are opaque substrate-specific settings, following the
-                              StorageClass.parameters pattern. Fleet core does not interpret them.
-                            type: object
-                          staging:
-                            description: |-
-                              Staging declares optional pre-commit safety semantics for substrates that
-                              support staging. When omitted, existing substrate defaults are preserved.
-                              The built-in OCI pull substrate already uses TwoPhase/Abort behavior.
-                            properties:
-                              failurePolicy:
-                                default: Abort
-                                description: |-
-                                  FailurePolicy selects how dry-run failures affect commit. Abort is the
-                                  only supported policy and means no object is committed when any staged
-                                  object fails validation.
-                                enum:
-                                - Abort
-                                type: string
-                              type:
-                                default: TwoPhase
-                                description: Type selects the staging strategy. TwoPhase
-                                  is the only supported value.
-                                enum:
-                                - TwoPhase
-                                type: string
-                            type: object
-                          substrateRef:
-                            description: |-
-                              SubstrateRef is the Substrate name. Built-in profiles commonly use
-                              "flux" or "argo"; external profiles may use any platform-defined name.
-                            type: string
-                        required:
-                        - mode
-                        - substrateRef
-                        type: object
                       desiredAppKey:
                         description: |-
                           DesiredAppKey is the key the cluster-controller uses when writing
@@ -549,6 +499,56 @@ spec:
                         required:
                         - kind
                         type: object
+                      substrate:
+                        description: Substrate configures the substrate-neutral adapter
+                          for this cluster.
+                        properties:
+                          mode:
+                            default: pull
+                            description: Mode controls where substrate execution happens.
+                            enum:
+                            - push
+                            - pull
+                            type: string
+                          parameters:
+                            additionalProperties:
+                              type: string
+                            description: |-
+                              Parameters are opaque substrate-specific settings, following the
+                              StorageClass.parameters pattern. Fleet core does not interpret them.
+                            type: object
+                          staging:
+                            description: |-
+                              Staging declares optional pre-commit safety semantics for substrates that
+                              support staging. When omitted, existing substrate defaults are preserved.
+                              The built-in OCI pull substrate already uses TwoPhase/Abort behavior.
+                            properties:
+                              failurePolicy:
+                                default: Abort
+                                description: |-
+                                  FailurePolicy selects how dry-run failures affect commit. Abort is the
+                                  only supported policy and means no object is committed when any staged
+                                  object fails validation.
+                                enum:
+                                - Abort
+                                type: string
+                              type:
+                                default: TwoPhase
+                                description: Type selects the staging strategy. TwoPhase
+                                  is the only supported value.
+                                enum:
+                                - TwoPhase
+                                type: string
+                            type: object
+                          substrateRef:
+                            description: |-
+                              SubstrateRef is the Substrate name. Built-in profiles commonly use
+                              "flux" or "argo"; external profiles may use any platform-defined name.
+                            type: string
+                        required:
+                        - mode
+                        - substrateRef
+                        type: object
                       suspend:
                         description: Suspend pauses all reconciliation for this cluster.
                         type: boolean
@@ -586,7 +586,7 @@ spec:
                             type: string
                         type: object
                     required:
-                    - delivery
+                    - substrate
                     type: object
                 required:
                 - spec

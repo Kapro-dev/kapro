@@ -18,7 +18,7 @@ func NewFleet(name string) *FleetBuilder {
 	return &FleetBuilder{name: name}
 }
 
-// WithSubstrate sets spec.delivery.substrateRef. The SDK leaves mode unset so the
+// WithSubstrate sets spec.substrate.substrateRef. The SDK leaves mode unset so the
 // API defaulting/validation path remains the single source of truth.
 func (b *FleetBuilder) WithSubstrate(substrateRef string) *FleetBuilder {
 	b.substrate = substrateRef
@@ -43,8 +43,8 @@ func (b *FleetBuilder) Build() *kaprov1alpha1.Fleet {
 		},
 		ObjectMeta: metav1.ObjectMeta{Name: b.name},
 		Spec: kaprov1alpha1.FleetSpec{
-			Delivery: kaprov1alpha1.DeliverySpec{SubstrateRef: b.substrate},
-			Clusters: copyClusterRefs(b.clusters),
+			Substrate: kaprov1alpha1.SubstrateBindingSpec{SubstrateRef: b.substrate},
+			Clusters:  copyClusterRefs(b.clusters),
 		},
 	}
 }

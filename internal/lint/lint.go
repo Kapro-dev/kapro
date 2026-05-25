@@ -270,9 +270,9 @@ func LintKapro(k *kaprov1alpha1.Fleet) []Issue {
 		out = append(out, errAt("spec.source / spec.sourceRef",
 			"only one of spec.source or spec.sourceRef may be set"))
 	}
-	if k.Spec.Delivery.SubstrateRef == "" {
-		out = append(out, errAt("spec.delivery.substrateRef",
-			"delivery substrate is required (e.g. flux, argocd)"))
+	if k.Spec.Substrate.SubstrateRef == "" {
+		out = append(out, errAt("spec.substrate.substrateRef",
+			"delivery substrate is required (e.g. flux, argo)"))
 	}
 	if len(k.Spec.Clusters) == 0 {
 		out = append(out, warnAt("spec.clusters",

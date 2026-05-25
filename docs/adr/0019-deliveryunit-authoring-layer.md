@@ -6,7 +6,7 @@ Accepted
 ## Context
 
 Kapro's pre-preview API still had two competing aggregate roots. `Fleet` carried
-source, delivery, cluster, and plan intent, while `Promotion` created runtime
+source, substrate, cluster, and plan intent, while `Promotion` created runtime
 attempts from that mixed shape. Existing GitOps adoption also generated
 top-level `Source` manifests, even though source mappings are app/workload
 intent rather than a standalone lifecycle most users should manage directly.
@@ -40,8 +40,14 @@ They are comparable to `EndpointSlice` or `ReplicaSet`: real API objects with
 status and operational value, not primary Git-authored intent.
 
 `Fleet` moves toward target-set semantics. It describes the clusters and
-delivery defaults for those clusters. It must not be the primary owner of
+substrate defaults for those clusters. It must not be the primary owner of
 source mapping intent.
+
+The user-authored Fleet and Cluster substrate binding is named
+`spec.substrate`, not `spec.delivery`. A Fleet or Cluster selects how work is
+applied or synced; it does not itself represent a delivery action. Runtime
+progress may still use `status.delivery` because that status records concrete
+delivery execution.
 
 `Promotion` remains an explicit user-authored action. Changing
 `DeliveryUnit.spec.source` or a future `DeliveryUnit.spec.version` must not
@@ -53,6 +59,20 @@ Runtime objects stay unchanged in principle:
 - `PromotionRun` is one execution attempt stamped from a Promotion;
 - `Target` is one per-cluster/stage execution record;
 - `DecisionTrace` is audit evidence.
+
+The public-preview authorship boundary is:
+
+| Category | Kinds | Authorship |
+| --- | --- | --- |
+| User-authored intent | `DeliveryUnit`, `Fleet`, `Cluster`, `ClusterTemplate`, `Plan`, `Policy`, `Plugin`, `SubstrateClass`, `Substrate`, `SubstrateDiscoveryPolicy`, typed substrate config CRDs | Users, platform teams, CLI generators, or GitOps write spec; Kapro writes status |
+| User-authored action | `Promotion`, `Approval` | Humans, CI, or CLI create explicit action records; Kapro writes status |
+| Controller-derived | `Source`, `Trigger` | Kapro writes spec and status from `DeliveryUnit`; users inspect them but do not author them in the public-preview path |
+| Runtime | `PromotionRun`, `Target`, `DecisionTrace` | Kapro writes spec and status; users observe them like EndpointSlices or ReplicaSets |
+
+That leaves 12 core `kapro.io` CRDs in the authored surface, 2 derived
+`kapro.io` CRDs for inspection, and 3 `runtime.kapro.io` CRDs that are not a
+user interface. Typed substrate config CRDs are authored only by platform teams
+when a substrate needs typed settings.
 
 ## Rejected Alternatives
 

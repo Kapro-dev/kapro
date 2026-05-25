@@ -74,7 +74,7 @@ type Request struct {
 	Target       string
 
 	// Mode is the selected delivery mode for this target.
-	Mode kaprov1alpha1.DeliveryMode
+	Mode kaprov1alpha1.SubstrateMode
 	// Cluster is the target FleetCluster object. Implementations must not
 	// mutate it directly unless they own the Kubernetes patch they are issuing.
 	Cluster *kaprov1alpha1.Cluster

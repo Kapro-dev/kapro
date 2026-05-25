@@ -37,7 +37,7 @@ func heartbeatLeaseName(clusterName string) string {
 // function only reads that decision (conditions[Ready] + status.heartbeat)
 // and surfaces it on the target.
 //
-// Behavior matrix (DeliveryMode == pull):
+// Behavior matrix (SubstrateMode == pull):
 //
 //	Ready=True                       → proceed.
 //	Ready=False reason=Unreachable   → defer; emit ClusterUnreachable event.
@@ -63,7 +63,7 @@ func (r *TargetReconciler) requireFreshHeartbeat(
 	mc *kaprov1alpha1.Cluster,
 ) (ctrl.Result, bool, error) {
 	_ = ctx // ctx retained for future use (status patches, list calls)
-	if mc.Spec.Delivery.Mode != kaprov1alpha1.DeliveryModePull {
+	if mc.Spec.Substrate.Mode != kaprov1alpha1.SubstrateModePull {
 		target.HeartbeatStaleSince = ""
 		target.HeartbeatStaleCount = 0
 		return ctrl.Result{}, true, nil

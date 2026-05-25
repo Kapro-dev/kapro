@@ -47,7 +47,7 @@ func newKapro(name string) *kaprov1alpha1.Fleet {
 		ObjectMeta: metav1.ObjectMeta{Name: name},
 		Spec: kaprov1alpha1.FleetSpec{
 			SourceRef: "shared-catalog",
-			Delivery:  kaprov1alpha1.DeliverySpec{Mode: "pull", SubstrateRef: "flux"},
+			Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: "pull", SubstrateRef: "flux"},
 			Clusters: []kaprov1alpha1.ClusterRef{
 				{Name: "c1", Labels: map[string]string{"stage": "prod"}},
 			},

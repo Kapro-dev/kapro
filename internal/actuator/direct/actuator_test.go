@@ -172,8 +172,8 @@ func directCluster(deployment string) *kaprov1alpha1.Cluster {
 	return &kaprov1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "canary-eu"},
 		Spec: kaprov1alpha1.ClusterSpec{
-			Delivery: kaprov1alpha1.DeliverySpec{
-				Mode:         kaprov1alpha1.DeliveryModePush,
+			Substrate: kaprov1alpha1.SubstrateBindingSpec{
+				Mode:         kaprov1alpha1.SubstrateModePush,
 				SubstrateRef: "direct",
 				Parameters: map[string]string{
 					"namespace":  "default",

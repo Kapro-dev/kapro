@@ -19,7 +19,7 @@ The v1alpha1 contract introduces the config side first:
 - `Substrate.spec.classRef`: selects a `SubstrateClass`.
 - `Substrate.spec.configRef`: points at a typed substrate config object.
 - `Substrate.spec.parameters`: retained as a compatibility and demo escape hatch.
-- `delivery.parameters`: retained as the app-level binding surface until typed
+- `substrate.parameters`: retained as the app-level binding surface until typed
   binding CRDs are introduced.
 
 Typed binding CRDs and `delivery.bindingRef` are intentionally deferred until
@@ -163,10 +163,10 @@ spec:
 
 ## App Binding Phase
 
-For v1alpha1, app/workload mapping remains in `delivery.parameters`:
+For v1alpha1, app/workload mapping remains in `substrate.parameters`:
 
 ```yaml
-delivery:
+substrate:
   substrateRef: prod-argo
   parameters:
     application: payments-prod
@@ -178,11 +178,11 @@ Kapro core passes desired versions to KSI. The substrate implementation maps
 those versions to native fields, templates, manifests, or API calls.
 
 Future typed binding CRDs will move this app-level shape out of
-`delivery.parameters`. At that point, Kapro will add the binding reference
+`substrate.parameters`. At that point, Kapro will add the binding reference
 field and class status for accepted binding kinds in the same release:
 
 ```yaml
-delivery:
+substrate:
   substrateRef: prod-argo
   bindingRef:
     apiVersion: argocd.substrate.kapro.io/v1alpha1

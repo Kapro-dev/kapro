@@ -81,7 +81,7 @@ func (b boolSubstrate) Capabilities() Capabilities {
 		Actuator:             b.kind,
 		ExecutionScope:       kaprov1alpha1.ExecutionScopeHub,
 		ExecutionModes:       []kaprov1alpha1.ExecutionMode{kaprov1alpha1.ExecutionModeHubPush},
-		Modes:                []kaprov1alpha1.DeliveryMode{kaprov1alpha1.DeliveryModePush},
+		Modes:                []kaprov1alpha1.SubstrateMode{kaprov1alpha1.SubstrateModePush},
 		SupportsApply:        true,
 		SupportsObserve:      true,
 		SupportsConvergence:  true,

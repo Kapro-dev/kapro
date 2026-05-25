@@ -103,7 +103,7 @@ func (l *deliveryLoop) tick(ctx context.Context) error {
 	desired := mergedDesiredVersions(fc.Spec)
 	span.SetAttributes(
 		attribute.Int("kapro.desired_version_count", len(desired)),
-		attribute.String("kapro.delivery.substrate_ref", fc.Spec.Delivery.SubstrateRef),
+		attribute.String("kapro.delivery.substrate_ref", fc.Spec.Substrate.SubstrateRef),
 		attribute.Bool("kapro.cluster.suspended", fc.Spec.Suspend),
 	)
 
@@ -125,7 +125,7 @@ func (l *deliveryLoop) tick(ctx context.Context) error {
 	}
 
 	// Resolve the substrate profile once per tick.
-	profile, profErr := l.resolveSubstrate(tctx, hub, fc.Spec.Delivery.SubstrateRef)
+	profile, profErr := l.resolveSubstrate(tctx, hub, fc.Spec.Substrate.SubstrateRef)
 
 	results := make(map[string]spokeprovider.ReconcileResult, len(desired))
 	for _, appKey := range sortedKeys(desired) {
@@ -202,7 +202,7 @@ func (l *deliveryLoop) reconcileOneResult(
 	}
 	if profile == nil {
 		out.Phase = kaprov1alpha1.DeliveryPhaseFailed
-		out.Err = fmt.Errorf("substrate %q not found", fc.Spec.Delivery.SubstrateRef)
+		out.Err = fmt.Errorf("substrate %q not found", fc.Spec.Substrate.SubstrateRef)
 		return out
 	}
 	// ExecutionScope gating: if this Substrate is hub-only, the hub-side actuator owns
@@ -230,7 +230,7 @@ func (l *deliveryLoop) reconcileOneResult(
 		out.Err = err
 		return out
 	}
-	params := mergeParameters(profile.Spec.Parameters, fc.Spec.Delivery.Parameters)
+	params := mergeParameters(profile.Spec.Parameters, fc.Spec.Substrate.Parameters)
 	res := provider.Reconcile(ctx, spokeprovider.ReconcileRequest{
 		Cluster:          fc,
 		AppKey:           appKey,
@@ -261,12 +261,12 @@ func providerDriverForSubstrate(spec kaprov1alpha1.SubstrateSpec) kaprov1alpha1.
 }
 
 // resolveSubstrate reads the cluster-scoped Substrate referenced by
-// fc.spec.delivery.substrateRef. Returns a configuration error (not a wrapped
+// fc.spec.substrate.substrateRef. Returns a configuration error (not a wrapped
 // IsNotFound) when the ref is missing/empty so per-app status carries a
 // stable human-readable message.
 func (l *deliveryLoop) resolveSubstrate(ctx context.Context, hub client.Client, name string) (*kaprov1alpha1.Substrate, error) {
 	if name == "" {
-		return nil, fmt.Errorf("cluster.spec.delivery.substrateRef is empty")
+		return nil, fmt.Errorf("cluster.spec.substrate.substrateRef is empty")
 	}
 	bp := &kaprov1alpha1.Substrate{}
 	if err := hub.Get(ctx, client.ObjectKey{Name: name}, bp); err != nil {
@@ -303,7 +303,7 @@ func (l *deliveryLoop) writeStatus(
 			Phase:          res.Phase,
 			DesiredVersion: desired[appKey],
 			ObservedDigest: res.ObservedDigest,
-			Staging:        effectiveStagingStatus(fc.Spec.Delivery.Staging, res.Staging),
+			Staging:        effectiveStagingStatus(fc.Spec.Substrate.Staging, res.Staging),
 			AppliedObjects: res.AppliedObjects,
 			Format:         res.Format,
 		}
@@ -471,7 +471,7 @@ func substrateRef(cluster *kaprov1alpha1.Cluster) string {
 	if cluster == nil {
 		return ""
 	}
-	return cluster.Spec.Delivery.SubstrateRef
+	return cluster.Spec.Substrate.SubstrateRef
 }
 
 func substrateName(profile *kaprov1alpha1.Substrate) string {

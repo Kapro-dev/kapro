@@ -189,7 +189,7 @@ such as `kapro bootstrap diff` or `kapro bootstrap upgrade` is Phase 2.
 
 These are tracked follow-ups, not launch blockers:
 
-- Generalize `Cluster.spec.delivery.parameters` validation through
+- Generalize `Cluster.spec.substrate.parameters` validation through
   `SubstrateClass`/typed config metadata instead of adding substrate-specific
   webhook cases for every future class.
 - Add a file-based `kapro migrate v0.5 v0.6 <path>` rewriter for internal

@@ -158,7 +158,7 @@ func (a *Actuator) getApplications(ctx context.Context, mc *kaprov1alpha1.Cluste
 	if a.Client == nil {
 		return nil, fmt.Errorf("client is nil")
 	}
-	namespace := mc.Spec.Delivery.Param("namespace", "argocd")
+	namespace := mc.Spec.Substrate.Param("namespace", "argocd")
 	if selectorRaw := applicationSelector(mc, appKey); selectorRaw != "" {
 		selector, err := labels.Parse(selectorRaw)
 		if err != nil {
@@ -186,11 +186,11 @@ func (a *Actuator) getApplications(ctx context.Context, mc *kaprov1alpha1.Cluste
 
 func applicationName(mc *kaprov1alpha1.Cluster, appKey string) string {
 	if appKey != "" && appKey != "default" {
-		if name := mc.Spec.Delivery.Param("application."+appKey, ""); name != "" {
+		if name := mc.Spec.Substrate.Param("application."+appKey, ""); name != "" {
 			return name
 		}
 	}
-	if name := mc.Spec.Delivery.Param("application", ""); name != "" {
+	if name := mc.Spec.Substrate.Param("application", ""); name != "" {
 		return name
 	}
 	if appKey != "" && appKey != "default" {
@@ -201,20 +201,20 @@ func applicationName(mc *kaprov1alpha1.Cluster, appKey string) string {
 
 func applicationSelector(mc *kaprov1alpha1.Cluster, appKey string) string {
 	if appKey != "" && appKey != "default" {
-		if selector := mc.Spec.Delivery.Param("applicationSelector."+appKey, ""); selector != "" {
+		if selector := mc.Spec.Substrate.Param("applicationSelector."+appKey, ""); selector != "" {
 			return selector
 		}
 	}
-	return mc.Spec.Delivery.Param("applicationSelector", "")
+	return mc.Spec.Substrate.Param("applicationSelector", "")
 }
 
 func argoVersionField(mc *kaprov1alpha1.Cluster, appKey string) string {
 	if appKey != "" && appKey != "default" {
-		if field := mc.Spec.Delivery.Param("versionField."+appKey, ""); field != "" {
+		if field := mc.Spec.Substrate.Param("versionField."+appKey, ""); field != "" {
 			return field
 		}
 	}
-	return mc.Spec.Delivery.Param("versionField", "spec.source.targetRevision")
+	return mc.Spec.Substrate.Param("versionField", "spec.source.targetRevision")
 }
 
 func setApplicationTargetRevision(app *unstructured.Unstructured, version, field string) error {
@@ -272,11 +272,11 @@ func sourceIndexField(field string) (int, bool) {
 }
 
 func authorizeApplicationWrite(mc *kaprov1alpha1.Cluster, app *unstructured.Unstructured, appKey string) error {
-	if mc.Spec.Delivery.Param("authorization", "required") == "disabled" ||
-		mc.Spec.Delivery.Param("requireAuthorization", "true") == "false" {
+	if mc.Spec.Substrate.Param("authorization", "required") == "disabled" ||
+		mc.Spec.Substrate.Param("requireAuthorization", "true") == "false" {
 		return nil
 	}
-	authorizedSource := mc.Spec.Delivery.Param("authorizedSource", "")
+	authorizedSource := mc.Spec.Substrate.Param("authorizedSource", "")
 	values := []string{
 		app.GetLabels()["kapro.io/managed-by"],
 		app.GetAnnotations()["kapro.io/managed-by"],

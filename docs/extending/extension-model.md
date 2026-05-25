@@ -80,7 +80,7 @@ but new external authors should use the `pkg/kapro/actuator` path.
 
 An actuator registration has two pieces:
 
-- the runtime registry key Kapro resolves from `DeliverySpec.RegistryKey()`,
+- the runtime registry key Kapro resolves from `SubstrateBindingSpec.RegistryKey()`,
   for example `push/flux`, `pull/oci`, or `push/argo`;
 - capability metadata that maps the implementation to a substrate kind,
   actuator name, execution mode, and supported delivery modes.

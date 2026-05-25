@@ -50,7 +50,7 @@ Examples:
 		},
 	}
 	cmd.Flags().StringVar(&opts.Name, "name", "checkout", "Application or fleet name")
-	cmd.Flags().StringVar(&opts.Substrate, "substrate", "direct", "Delivery substrate: direct, argo, flux, or oci")
+	cmd.Flags().StringVar(&opts.Substrate, "substrate", "direct", "Substrate profile: direct, argo, flux, or oci")
 	cmd.Flags().StringVar(&opts.Mode, "mode", "push", "Delivery mode: push or pull")
 	cmd.Flags().StringVar(&opts.Registry, "registry", "oci://registry.example.com/platform", "OCI registry URL for bundles")
 	cmd.Flags().StringVar(&opts.Namespace, "namespace", "", "Substrate namespace (default: argocd for argo, flux-system for flux, kapro-system for oci)")
@@ -706,7 +706,7 @@ metadata:
     kapro.io/unit: %s
     kapro.io/stage: %s
 spec:
-  delivery:
+  substrate:
     mode: %s
     substrateRef: %s
     parameters:
@@ -828,7 +828,7 @@ metadata:
     kapro.io/managed-by: kapro
     kapro.io/team: %s
 spec:
-  delivery:
+  substrate:
     mode: %s
     substrateRef: %s
     parameters:
@@ -849,7 +849,7 @@ metadata:
     kapro.io/managed-by: kapro
     kapro.io/team: %s
 spec:
-  delivery:
+  substrate:
     mode: %s
     substrateRef: %s
     parameters:

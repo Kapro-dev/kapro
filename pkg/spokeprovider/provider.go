@@ -44,7 +44,7 @@ type ReconcileRequest struct {
 	DesiredVersion   string
 	SubstrateProfile *kaprov1alpha1.Substrate
 	// Parameters is the merged parameter map: SubstrateProfile.Spec.Parameters
-	// overlaid with FleetCluster.Spec.Delivery.Parameters (cluster wins).
+	// overlaid with FleetCluster.Spec.Substrate.Parameters (cluster wins).
 	Parameters map[string]string
 }
 

@@ -249,7 +249,7 @@ func makeFleetCluster(name string, labels map[string]string) *kaprov1alpha1.Clus
 	return &kaprov1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Labels: labels},
 		Spec: kaprov1alpha1.ClusterSpec{
-			Delivery: kaprov1alpha1.DeliverySpec{
+			Substrate: kaprov1alpha1.SubstrateBindingSpec{
 				Mode: "pull", SubstrateRef: "flux",
 				Parameters: map[string]string{
 					"namespace":     "flux-system",

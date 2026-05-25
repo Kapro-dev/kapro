@@ -77,9 +77,9 @@ func (r *FleetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 
 	l.Info("reconciling Kapro", "name", kapro.Name)
 
-	delivery := kapro.Spec.Delivery
+	delivery := kapro.Spec.Substrate
 	if delivery.Mode == "" {
-		delivery.Mode = kaprov1alpha1.DeliveryModePull
+		delivery.Mode = kaprov1alpha1.SubstrateModePull
 	}
 	if delivery.SubstrateRef == "" {
 		delivery.SubstrateRef = "flux"
@@ -124,13 +124,13 @@ func (r *FleetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			clusterDelivery.Parameters = map[string]string{}
 		}
 		if clusterDelivery.SubstrateRef == "flux" {
-			if clusterDelivery.Mode == kaprov1alpha1.DeliveryModePush {
+			if clusterDelivery.Mode == kaprov1alpha1.SubstrateModePush {
 				setDefaultParam(clusterDelivery.Parameters, "resourceSet", kapro.Name+"-workloads")
 				setDefaultParam(clusterDelivery.Parameters, "namespace", "flux-system")
 				setDefaultParam(clusterDelivery.Parameters, "inputField", "version")
 				setDefaultParam(clusterDelivery.Parameters, "tenantField", "tenant")
 			}
-			if clusterDelivery.Mode == kaprov1alpha1.DeliveryModePull {
+			if clusterDelivery.Mode == kaprov1alpha1.SubstrateModePull {
 				setDefaultParam(clusterDelivery.Parameters, "namespace", "flux-system")
 				setDefaultParam(clusterDelivery.Parameters, "ociRepository", kapro.Name+"-bundle")
 			}
@@ -142,7 +142,7 @@ func (r *FleetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 				Labels: cluster.Labels,
 			},
 			Spec: kaprov1alpha1.ClusterSpec{
-				Delivery: clusterDelivery,
+				Substrate: clusterDelivery,
 			},
 		}
 		if err := r.Patch(ctx, mc,
@@ -613,9 +613,9 @@ func fleetDeliveryPathForFleet(kapro *kaprov1alpha1.Fleet) fleetDeliveryPath {
 	if kapro == nil {
 		return fleetDeliveryPathFluxSpoke
 	}
-	delivery := kapro.Spec.Delivery
+	delivery := kapro.Spec.Substrate
 	if delivery.Mode == "" {
-		delivery.Mode = kaprov1alpha1.DeliveryModePull
+		delivery.Mode = kaprov1alpha1.SubstrateModePull
 	}
 	if delivery.SubstrateRef == "" {
 		delivery.SubstrateRef = "flux"
@@ -623,9 +623,9 @@ func fleetDeliveryPathForFleet(kapro *kaprov1alpha1.Fleet) fleetDeliveryPath {
 	return resolveFleetDeliveryPath(delivery)
 }
 
-func resolveFleetDeliveryPath(delivery kaprov1alpha1.DeliverySpec) fleetDeliveryPath {
+func resolveFleetDeliveryPath(delivery kaprov1alpha1.SubstrateBindingSpec) fleetDeliveryPath {
 	if delivery.Mode == "" {
-		delivery.Mode = kaprov1alpha1.DeliveryModePull
+		delivery.Mode = kaprov1alpha1.SubstrateModePull
 	}
 	if delivery.SubstrateRef == "" {
 		delivery.SubstrateRef = "flux"
@@ -633,7 +633,7 @@ func resolveFleetDeliveryPath(delivery kaprov1alpha1.DeliverySpec) fleetDelivery
 	if delivery.SubstrateRef != "flux" {
 		return fleetDeliveryPathNative
 	}
-	if delivery.Mode == kaprov1alpha1.DeliveryModePull {
+	if delivery.Mode == kaprov1alpha1.SubstrateModePull {
 		return fleetDeliveryPathFluxSpoke
 	}
 	return fleetDeliveryPathFluxOperator

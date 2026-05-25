@@ -54,8 +54,8 @@ func newDeliveryFC(name string, desired map[string]string, suspend bool, substra
 	fc.Name = name
 	fc.Spec.DesiredVersions = desired
 	fc.Spec.Suspend = suspend
-	fc.Spec.Delivery = kaprov1alpha1.DeliverySpec{
-		Mode:         kaprov1alpha1.DeliveryModePull,
+	fc.Spec.Substrate = kaprov1alpha1.SubstrateBindingSpec{
+		Mode:         kaprov1alpha1.SubstrateModePull,
 		SubstrateRef: substrate,
 	}
 	return fc
@@ -316,7 +316,7 @@ func TestDeliveryLoop_FailedDoesNotAdvanceCurrentVersions(t *testing.T) {
 func TestDeliveryLoop_WritesStagingDiagnostics(t *testing.T) {
 	fc := newDeliveryFC("c1", map[string]string{"api": "1.0"}, false, "oci-default")
 	fc.Status.CurrentVersions = map[string]string{"api": "0.9"}
-	fc.Spec.Delivery.Staging = &kaprov1alpha1.DeliveryStagingSpec{
+	fc.Spec.Substrate.Staging = &kaprov1alpha1.DeliveryStagingSpec{
 		Type:          kaprov1alpha1.DeliveryStagingTwoPhase,
 		FailurePolicy: kaprov1alpha1.DeliveryStagingFailureAbort,
 	}
@@ -545,7 +545,7 @@ func TestDeliveryLoop_EmptyDesiredVersionsIsNoOp(t *testing.T) {
 
 func TestDeliveryLoop_MergesProfileAndClusterParameters(t *testing.T) {
 	fc := newDeliveryFC("c1", map[string]string{"api": "1.0"}, false, "oci-default")
-	fc.Spec.Delivery.Parameters = map[string]string{"tag": "{version}", "extra": "from-cluster"}
+	fc.Spec.Substrate.Parameters = map[string]string{"tag": "{version}", "extra": "from-cluster"}
 	bp := newDeliveryBP("oci-default", kaprov1alpha1.SubstrateKindOCI)
 	bp.Spec.Parameters = map[string]string{"repository": "r.io/x", "tag": "PROFILE-default"}
 	hub := deliveryHub(t, fc, bp)

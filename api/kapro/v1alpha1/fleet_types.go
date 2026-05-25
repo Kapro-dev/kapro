@@ -1,4 +1,4 @@
-// Fleet CRD: target set and delivery defaults for one group of clusters.
+// Fleet CRD: target set and substrate defaults for one group of clusters.
 package v1alpha1
 
 import (
@@ -7,7 +7,7 @@ import (
 
 // ---- Fleet ------------------------------------------------------------------
 
-// FleetSpec defines delivery defaults and target clusters for one fleet.
+// FleetSpec defines substrate defaults and target clusters for one fleet.
 type FleetSpec struct {
 	// Registry is the OCI registry URL for generated pull-mode artifacts.
 	// Native Argo/Flux sources may omit it when no Fleet-packaged artifact is used.
@@ -22,9 +22,9 @@ type FleetSpec struct {
 	// workflows. New manifests should use DeliveryUnit.spec.source instead.
 	// +optional
 	Source *SourceSpec `json:"source,omitempty"`
-	// Delivery selects the substrate-neutral delivery defaults copied to
+	// Substrate selects the substrate-neutral defaults copied to
 	// generated Cluster objects.
-	Delivery DeliverySpec `json:"delivery"`
+	Substrate SubstrateBindingSpec `json:"substrate"`
 	// Clusters defines the target clusters in the fleet.
 	// +kubebuilder:validation:MinItems=1
 	Clusters []ClusterRef `json:"clusters"`
@@ -134,7 +134,7 @@ type FleetStatus struct {
 // +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.status.version`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// Fleet is the target-set entry point for fleet delivery. Users select delivery
+// Fleet is the target-set entry point for fleet delivery. Users select substrate
 // defaults and define clusters. DeliveryUnit owns source shape, Plan owns
 // rollout strategy, and Promotion remains the explicit action boundary.
 type Fleet struct {

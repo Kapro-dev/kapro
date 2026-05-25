@@ -26,6 +26,6 @@ spec:
       labels:
         kapro.io/managed-fleet: edge
     spec:
-      delivery:
+      substrate:
         mode: pull
         substrateRef: oci

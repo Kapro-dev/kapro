@@ -52,12 +52,12 @@ func (a *FluxOperatorActuator) Apply(ctx context.Context, req actuator.ApplyRequ
 	if mc == nil {
 		return fmt.Errorf("cluster is nil")
 	}
-	delivery := mc.Spec.Delivery
+	delivery := mc.Spec.Substrate
 
 	ns, tenantField := resolveConfig(&delivery)
 	resourceSet := delivery.Param("resourceSet", "")
 	if resourceSet == "" {
-		return fmt.Errorf("FleetCluster %q delivery.parameters.resourceSet is required for flux push delivery", mc.Name)
+		return fmt.Errorf("FleetCluster %q substrate.parameters.resourceSet is required for flux push delivery", mc.Name)
 	}
 	versionField := resolveVersionField(&delivery, req.AppKey)
 
@@ -102,10 +102,10 @@ func (a *FluxOperatorActuator) ApplyDelta(ctx context.Context, req actuator.Delt
 		return 0, fmt.Errorf("cluster is nil")
 	}
 	mc := req.Cluster
-	delivery := mc.Spec.Delivery
+	delivery := mc.Spec.Substrate
 	resourceSet := delivery.Param("resourceSet", "")
 	if resourceSet == "" {
-		return 0, fmt.Errorf("FleetCluster %q delivery.parameters.resourceSet is required for flux push delivery", mc.Name)
+		return 0, fmt.Errorf("FleetCluster %q substrate.parameters.resourceSet is required for flux push delivery", mc.Name)
 	}
 
 	ns, tenantField := resolveConfig(&delivery)
@@ -169,10 +169,10 @@ func (a *FluxOperatorActuator) ApplyDelta(ctx context.Context, req actuator.Delt
 // ResourceSet Ready only means "YAML was applied" — we also need to verify the spoke
 // HelmRelease actually succeeded (Ready=True on the HelmRelease itself).
 func (a *FluxOperatorActuator) IsConverged(ctx context.Context, mc *kaprov1alpha1.Cluster, appKey, version string) (bool, error) {
-	delivery := mc.Spec.Delivery
+	delivery := mc.Spec.Substrate
 	resourceSet := delivery.Param("resourceSet", "")
 	if resourceSet == "" {
-		return false, fmt.Errorf("FleetCluster %q delivery.parameters.resourceSet is required for flux push delivery", mc.Name)
+		return false, fmt.Errorf("FleetCluster %q substrate.parameters.resourceSet is required for flux push delivery", mc.Name)
 	}
 
 	ns, tenantField := resolveConfig(&delivery)
@@ -218,10 +218,10 @@ func (a *FluxOperatorActuator) IsAllConverged(ctx context.Context, mc *kaprov1al
 	if mc == nil {
 		return false, fmt.Errorf("cluster is nil")
 	}
-	delivery := mc.Spec.Delivery
+	delivery := mc.Spec.Substrate
 	resourceSet := delivery.Param("resourceSet", "")
 	if resourceSet == "" {
-		return false, fmt.Errorf("FleetCluster %q delivery.parameters.resourceSet is required for flux push delivery", mc.Name)
+		return false, fmt.Errorf("FleetCluster %q substrate.parameters.resourceSet is required for flux push delivery", mc.Name)
 	}
 
 	ns, tenantField := resolveConfig(&delivery)
@@ -271,14 +271,14 @@ func (a *FluxOperatorActuator) Rollback(ctx context.Context, mc *kaprov1alpha1.C
 
 // --- Config helpers ---
 
-func resolveConfig(delivery *kaprov1alpha1.DeliverySpec) (ns, tenantField string) {
+func resolveConfig(delivery *kaprov1alpha1.SubstrateBindingSpec) (ns, tenantField string) {
 	return delivery.Param("namespace", "flux-system"), delivery.Param("tenantField", "tenant")
 }
 
 // resolveVersionField maps an appKey to the ResourceSet input field name.
 // For multi-unit Source: "pos-server" → "pos-server_version"
 // For single-app (backward compat): "" or "default" → configured inputField
-func resolveVersionField(delivery *kaprov1alpha1.DeliverySpec, appKey string) string {
+func resolveVersionField(delivery *kaprov1alpha1.SubstrateBindingSpec, appKey string) string {
 	if appKey != "" && appKey != "default" {
 		return appKey + "_version"
 	}

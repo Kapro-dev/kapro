@@ -10,7 +10,7 @@
 //
 //   - FleetCluster (primary watch). spec.consecutiveFailureThreshold is the
 //     hysteresis knob (default 3); spec.suspend short-circuits to Unknown;
-//     spec.delivery.mode=push short-circuits to Ready=True (no spoke agent,
+//     spec.substrate.mode=push short-circuits to Ready=True (no spoke agent,
 //     no Lease — heartbeat is N/A).
 //   - coordination.k8s.io/v1 Lease in HeartbeatNamespace (secondary watch,
 //     mapped back to the owning FleetCluster by name prefix). Spoke renews
@@ -180,7 +180,7 @@ func (r *ClusterHeartbeatReconciler) computeDesiredReady(ctx context.Context, fc
 
 	// Push mode has no spoke agent and no Lease. Reachability is whatever
 	// the hub-side adapter says — we don't override.
-	if fc.Spec.Delivery.Mode == kaprov1alpha1.DeliveryModePush {
+	if fc.Spec.Substrate.Mode == kaprov1alpha1.SubstrateModePush {
 		return desiredReady{
 			Status:  metav1.ConditionTrue,
 			Reason:  kaprov1alpha1.ReasonPushModeNoHeartbeat,

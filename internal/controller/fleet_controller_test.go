@@ -252,8 +252,8 @@ func TestFleetReconcilerSkipsResourceSetForNativeSubstrates(t *testing.T) {
 			Source: &kaprov1alpha1.SourceSpec{
 				Units: []kaprov1alpha1.Unit{{Name: "checkout", Version: "ghcr.io/example/checkout:0.1.0"}},
 			},
-			Delivery: kaprov1alpha1.DeliverySpec{
-				Mode:         kaprov1alpha1.DeliveryModePush,
+			Substrate: kaprov1alpha1.SubstrateBindingSpec{
+				Mode:         kaprov1alpha1.SubstrateModePush,
 				SubstrateRef: "direct",
 			},
 			Clusters: []kaprov1alpha1.ClusterRef{{Name: "canary-eu", Labels: map[string]string{"kapro.io/stage": "canary"}}},
@@ -290,8 +290,8 @@ func TestFleetReconcilerSkipsResourceSetForNativeSubstrates(t *testing.T) {
 	if err := r.Get(ctx, client.ObjectKey{Name: "canary-eu"}, &cluster); err != nil {
 		t.Fatal(err)
 	}
-	if cluster.Spec.Delivery.SubstrateRef != "direct" || cluster.Spec.Delivery.Mode != kaprov1alpha1.DeliveryModePush {
-		t.Fatalf("cluster delivery = %#v", cluster.Spec.Delivery)
+	if cluster.Spec.Substrate.SubstrateRef != "direct" || cluster.Spec.Substrate.Mode != kaprov1alpha1.SubstrateModePush {
+		t.Fatalf("cluster delivery = %#v", cluster.Spec.Substrate)
 	}
 }
 
@@ -307,8 +307,8 @@ func TestFleetReconcilerAcceptsTargetSetWithoutSourceOrInlinePlan(t *testing.T) 
 	fleet := &kaprov1alpha1.Fleet{
 		ObjectMeta: metav1.ObjectMeta{Name: "checkout"},
 		Spec: kaprov1alpha1.FleetSpec{
-			Delivery: kaprov1alpha1.DeliverySpec{
-				Mode:         kaprov1alpha1.DeliveryModePush,
+			Substrate: kaprov1alpha1.SubstrateBindingSpec{
+				Mode:         kaprov1alpha1.SubstrateModePush,
 				SubstrateRef: "argo",
 				Parameters: map[string]string{
 					"namespace": "argocd",
@@ -348,8 +348,8 @@ func TestFleetReconcilerAcceptsTargetSetWithoutSourceOrInlinePlan(t *testing.T) 
 	if err := r.Get(ctx, client.ObjectKey{Name: "canary-eu"}, &cluster); err != nil {
 		t.Fatal(err)
 	}
-	if cluster.Spec.Delivery.SubstrateRef != "argo" || cluster.Spec.Delivery.Param("namespace", "") != "argocd" {
-		t.Fatalf("cluster delivery = %#v", cluster.Spec.Delivery)
+	if cluster.Spec.Substrate.SubstrateRef != "argo" || cluster.Spec.Substrate.Param("namespace", "") != "argocd" {
+		t.Fatalf("cluster delivery = %#v", cluster.Spec.Substrate)
 	}
 }
 

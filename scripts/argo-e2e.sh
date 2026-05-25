@@ -613,7 +613,7 @@ metadata:
   labels:
     kapro.io/e2e: argo
 spec:
-  delivery:
+  substrate:
     mode: push
     substrateRef: argo
     parameters:
@@ -634,7 +634,7 @@ metadata:
     kapro.io/team: platform
     kapro.io/unit: argo-e2e
 spec:
-  delivery:
+  substrate:
     mode: push
     substrateRef: argo
     parameters:

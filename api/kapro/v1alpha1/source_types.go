@@ -18,7 +18,7 @@ import (
 type SourceSpec struct {
 	// SubstrateRef is the Substrate this source is normally discovered from
 	// or packaged for. Fleet uses it as metadata; delivery still comes from
-	// Fleet.spec.delivery and Cluster.spec.delivery.
+	// Fleet.spec.substrate and Cluster.spec.substrate.
 	// +optional
 	SubstrateRef string `json:"substrateRef,omitempty"`
 	// Registries defines HelmRepository sources for generated Flux resources.
