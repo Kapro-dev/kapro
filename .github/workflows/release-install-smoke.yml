@@ -55,6 +55,16 @@ jobs:
           KAPRO_VERIFY_CLEANUP: "true"
         run: scripts/verify-install.sh release-cluster
 
+      - name: Reset Kind cluster for upgrade smoke
+        if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.head_branch == 'v0.6.0'
+        env:
+          KAPRO_RELEASE_INSTALL_KIND_IMAGE: ${{ github.event_name == 'workflow_dispatch' && inputs.kind_image || 'kindest/node:v1.30.0' }}
+        run: |
+          kind delete cluster --name kapro-release-install
+          kind create cluster \
+            --name kapro-release-install \
+            --image "${KAPRO_RELEASE_INSTALL_KIND_IMAGE}"
+
       - name: Upgrade from previous published release
         if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.head_branch == 'v0.6.0'
         env:
@@ -62,6 +72,16 @@ jobs:
           KAPRO_PREVIOUS_RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.previous_version || 'v0.5.7' }}
           KAPRO_VERIFY_CLEANUP: "true"
         run: scripts/verify-install.sh release-upgrade-cluster
+
+      - name: Reset Kind cluster for rollback smoke
+        if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.head_branch == 'v0.6.0'
+        env:
+          KAPRO_RELEASE_INSTALL_KIND_IMAGE: ${{ github.event_name == 'workflow_dispatch' && inputs.kind_image || 'kindest/node:v1.30.0' }}
+        run: |
+          kind delete cluster --name kapro-release-install
+          kind create cluster \
+            --name kapro-release-install \
+            --image "${KAPRO_RELEASE_INSTALL_KIND_IMAGE}"
 
       - name: Roll back from current published release
         if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.head_branch == 'v0.6.0'
