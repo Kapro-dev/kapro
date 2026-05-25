@@ -73,3 +73,29 @@ go test ./examples/05-plugins/04-capacity-planner
 
 The test suite runs the shared KPI conformance harness and planner-specific
 tests.
+
+## Run This Example
+
+Every example has a local runner. Start with the safe check command; this is also the path exercised by CI through `make check-examples`:
+
+```bash
+examples/05-plugins/04-capacity-planner/run.sh
+```
+
+Run the Go package directly through the same wrapper:
+
+```bash
+examples/05-plugins/04-capacity-planner/run.sh test
+examples/05-plugins/04-capacity-planner/run.sh run
+```
+
+## Expected Result
+
+- `check` and `test` compile the package and run its tests without requiring a Kubernetes cluster.
+- `run` starts the example program or prints the SDK object it builds.
+
+## Cleanup
+
+```bash
+kubectl delete -f examples/05-plugins/04-capacity-planner --ignore-not-found
+```

@@ -33,3 +33,26 @@ kubectl apply --recursive -f apps -f clusters -f deliveryunits -f plans -f fleet
 Kapro coordinates promotion. The direct profile applies the starter workload
 manifests during bootstrap and updates Deployment images through the Kubernetes
 API during promotion.
+
+## Run This Example
+
+Every example has a local runner. Start with the safe check command; this is also the path exercised by CI through `make check-examples`:
+
+```bash
+examples/01-quickstarts/01-direct/run.sh
+```
+
+This directory is an index for smaller examples. Run a child folder next, for example:
+
+```bash
+examples/01-quickstarts/01-direct/apps/run.sh
+```
+
+## Expected Result
+
+- `check` verifies this directory has its README and runnable script.
+- Child example folders contain the concrete YAML, Go, or demo assets.
+
+## Cleanup
+
+No cluster resources are created by `check`. Stop any foreground `run` command with `Ctrl-C`.

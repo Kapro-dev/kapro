@@ -156,3 +156,29 @@ The plugin imports only public Kapro packages:
 - `kapro.io/kapro/conformance/actuator` from tests.
 
 It does not import Kapro controller internals.
+
+## Run This Example
+
+Every example has a local runner. Start with the safe check command; this is also the path exercised by CI through `make check-examples`:
+
+```bash
+examples/05-plugins/00-argocd-actuator/run.sh
+```
+
+Run the Go package directly through the same wrapper:
+
+```bash
+examples/05-plugins/00-argocd-actuator/run.sh test
+examples/05-plugins/00-argocd-actuator/run.sh run
+```
+
+## Expected Result
+
+- `check` and `test` compile the package and run its tests without requiring a Kubernetes cluster.
+- `run` starts the example program or prints the SDK object it builds.
+
+## Cleanup
+
+```bash
+kubectl delete -f examples/05-plugins/00-argocd-actuator --ignore-not-found
+```

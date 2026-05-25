@@ -58,3 +58,29 @@ entries must reference real stages, and the DAG must be acyclic.
 See [`docs/concepts.md`](../../docs/concepts/concepts.md) for the full field
 reference and [`docs/first-promotion-10min.md`](../../docs/getting-started/first-promotion-10min.md)
 for an end-to-end walkthrough.
+
+## Run This Example
+
+Every example has a local runner. Start with the safe check command; this is also the path exercised by CI through `make check-examples`:
+
+```bash
+examples/02-plans/run.sh
+```
+
+After you have a Kubernetes cluster and the required controllers installed, apply the manifests through the wrapper:
+
+```bash
+examples/02-plans/run.sh apply
+```
+
+## Expected Result
+
+- `check` validates the README, shell syntax, YAML/JSON shape, and stale Kapro API names.
+- `apply` runs `kubectl apply -f` for this directory.
+- Kubernetes should accept the manifests once the matching CRDs/controllers are installed.
+
+## Cleanup
+
+```bash
+kubectl delete -f examples/02-plans --ignore-not-found
+```

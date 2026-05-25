@@ -139,3 +139,27 @@ types in `pkg/events` are exercised automatically.
 
 - [`docs/events.md`](../../../docs/concepts/events.md) — vocabulary spec
 - [`docs/adr/0003-cloudevents-publisher-posture.md`](../../../docs/adr/0003-cloudevents-publisher-posture.md) — why Kapro doesn't ship Slack substrates
+
+## Run This Example
+
+Every example has a local runner. Start with the safe check command; this is also the path exercised by CI through `make check-examples`:
+
+```bash
+examples/05-plugins/05-cloudevents-printer/run.sh
+```
+
+Run the Go package directly through the same wrapper:
+
+```bash
+examples/05-plugins/05-cloudevents-printer/run.sh test
+examples/05-plugins/05-cloudevents-printer/run.sh run
+```
+
+## Expected Result
+
+- `check` and `test` compile the package and run its tests without requiring a Kubernetes cluster.
+- `run` starts the example program or prints the SDK object it builds.
+
+## Cleanup
+
+No cluster resources are created by `check`. Stop any foreground `run` command with `Ctrl-C`.

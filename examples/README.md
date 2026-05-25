@@ -23,6 +23,8 @@ Operators can jump to `08-monitoring/`, `10-kind-demo/`, and `11-rbac/`.
 Extension authors should start with `05-plugins/`, then `06-sdk-go/`, then the
 minimal custom actuator in `07-actuator-hello-world/`.
 
+## Run This Example
+
 Every example directory includes a `run.sh` wrapper. The default command is a
 safe local check. The README shows the lesson and the script is the executable
 entrypoint for that same lesson:
@@ -46,6 +48,20 @@ artifact for OCI lessons:
 CI runs the same entrypoints through `make check-examples`, which calls
 `examples/run-all.sh check` and then `go test ./examples/...`. That keeps the
 public READMEs, scripts, YAML, and Go examples connected.
+
+## Expected Result
+
+- `./examples/run.sh` checks the examples root README and runner wiring.
+- `make check-examples` walks every nested `run.sh`, validates YAML/JSON and
+  shell assets, and runs Go example tests.
+- Individual example `apply`, `run`, and `oci-prep` commands are documented in
+  the README for that folder.
+
+## Cleanup
+
+The root-level check does not create cluster resources. Use the cleanup command
+inside an individual example README after running that example's `apply`
+command.
 
 ## Local Lab
 

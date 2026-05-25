@@ -170,3 +170,33 @@ func TestEveryExampleReadmeHasRunnableGuidance(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestEveryExampleReadmeConnectsToRunScript(t *testing.T) {
+	if err := filepath.WalkDir(".", func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			if strings.HasPrefix(entry.Name(), ".") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if entry.Name() != "README.md" || path == "README.md" {
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		text := string(data)
+		for _, required := range []string{"## Run This Example", "## Expected Result", "## Cleanup", "run.sh"} {
+			if !strings.Contains(text, required) {
+				t.Errorf("%s is missing %q", path, required)
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}

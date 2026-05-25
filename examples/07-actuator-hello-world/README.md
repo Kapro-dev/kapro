@@ -81,3 +81,29 @@ Use this example to learn the contract. Don't copy it into production.
 - [`docs/extending/custom-substrate.md`](../../docs/extending/custom-substrate.md) — full custom-substrate authoring guide
 - [`docs/extending/actuator-plugin-contract.md`](../../docs/extending/actuator-plugin-contract.md) — gRPC plugin contract for out-of-process substrates
 - [`docs/concepts/api-naming.md`](../../docs/concepts/api-naming.md) — the substrate/execution naming guide
+
+## Run This Example
+
+Every example has a local runner. Start with the safe check command; this is also the path exercised by CI through `make check-examples`:
+
+```bash
+examples/07-actuator-hello-world/run.sh
+```
+
+Run the Go package directly through the same wrapper:
+
+```bash
+examples/07-actuator-hello-world/run.sh test
+examples/07-actuator-hello-world/run.sh run
+```
+
+## Expected Result
+
+- `check` and `test` compile the package and run its tests without requiring a Kubernetes cluster.
+- `run` starts the example program or prints the SDK object it builds.
+
+## Cleanup
+
+```bash
+kubectl delete -f examples/07-actuator-hello-world --ignore-not-found
+```
