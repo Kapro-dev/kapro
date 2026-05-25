@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
@@ -160,6 +161,167 @@ func TestDeliveryUnitSuspendedSuspendsExistingDerivedTriggers(t *testing.T) {
 	}
 	if trigger.Spec.Suspended == nil || !*trigger.Spec.Suspended {
 		t.Fatalf("suspended DeliveryUnit left trigger active: %#v", trigger.Spec.Suspended)
+	}
+}
+
+func TestDeliveryUnitUnsuspendRestoresTriggers(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	notSuspended := false
+	unit := &kaprov1alpha1.DeliveryUnit{
+		ObjectMeta: metav1.ObjectMeta{Name: "checkout", Labels: map[string]string{kaprov1alpha1.LabelTeam: "platform"}},
+		Spec: kaprov1alpha1.DeliveryUnitSpec{
+			DefaultFleetRef: "checkout-fleet",
+			Source:          kaprov1alpha1.SourceSpec{Units: []kaprov1alpha1.Unit{{Name: "api"}}},
+			Triggers: []kaprov1alpha1.DeliveryUnitTrigger{{
+				Name:      "tags",
+				Suspended: &notSuspended,
+				Source: kaprov1alpha1.TriggerSource{
+					Type: "oci",
+					OCI:  &kaprov1alpha1.OCITriggerSource{Repository: "oci://registry.example.com/checkout", TagPattern: "v.*"},
+				},
+			}},
+		},
+	}
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(unit).
+		WithStatusSubresource(&kaprov1alpha1.DeliveryUnit{}).
+		Build()
+	r := &DeliveryUnitReconciler{Client: c, Scheme: scheme, Recorder: record.NewFakeRecorder(8)}
+
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "checkout"}}); err != nil {
+		t.Fatal(err)
+	}
+	var latest kaprov1alpha1.DeliveryUnit
+	if err := c.Get(ctx, client.ObjectKey{Name: "checkout"}, &latest); err != nil {
+		t.Fatal(err)
+	}
+	latest.Spec.Suspended = true
+	if err := c.Update(ctx, &latest); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "checkout"}}); err != nil {
+		t.Fatal(err)
+	}
+	var trigger kaprov1alpha1.Trigger
+	if err := c.Get(ctx, client.ObjectKey{Name: "checkout-tags"}, &trigger); err != nil {
+		t.Fatal(err)
+	}
+	if trigger.Spec.Suspended == nil || !*trigger.Spec.Suspended {
+		t.Fatalf("suspend did not pause trigger: %#v", trigger.Spec.Suspended)
+	}
+
+	if err := c.Get(ctx, client.ObjectKey{Name: "checkout"}, &latest); err != nil {
+		t.Fatal(err)
+	}
+	latest.Spec.Suspended = false
+	if err := c.Update(ctx, &latest); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "checkout"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Get(ctx, client.ObjectKey{Name: "checkout-tags"}, &trigger); err != nil {
+		t.Fatal(err)
+	}
+	if trigger.Spec.Suspended == nil || *trigger.Spec.Suspended {
+		t.Fatalf("unsuspend did not restore trigger active state: %#v", trigger.Spec.Suspended)
+	}
+}
+
+func TestDeliveryUnitSourceNameConflict(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	existing := &kaprov1alpha1.Source{
+		ObjectMeta: metav1.ObjectMeta{Name: "checkout"},
+		Spec:       kaprov1alpha1.SourceSpec{SubstrateRef: "manual", Units: []kaprov1alpha1.Unit{{Name: "manual"}}},
+	}
+	unit := &kaprov1alpha1.DeliveryUnit{
+		ObjectMeta: metav1.ObjectMeta{Name: "checkout", Labels: map[string]string{kaprov1alpha1.LabelTeam: "platform"}},
+		Spec: kaprov1alpha1.DeliveryUnitSpec{
+			DefaultFleetRef: "checkout-fleet",
+			Source:          kaprov1alpha1.SourceSpec{SubstrateRef: "flux", Units: []kaprov1alpha1.Unit{{Name: "api"}}},
+		},
+	}
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(existing, unit).
+		WithStatusSubresource(&kaprov1alpha1.DeliveryUnit{}).
+		Build()
+	r := &DeliveryUnitReconciler{Client: c, Scheme: scheme, Recorder: record.NewFakeRecorder(8)}
+
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "checkout"}}); err != nil {
+		t.Fatal(err)
+	}
+	var source kaprov1alpha1.Source
+	if err := c.Get(ctx, client.ObjectKey{Name: "checkout"}, &source); err != nil {
+		t.Fatal(err)
+	}
+	if source.Spec.SubstrateRef != "manual" || source.Spec.Units[0].Name != "manual" {
+		t.Fatalf("pre-existing Source was overwritten: %#v", source.Spec)
+	}
+	var got kaprov1alpha1.DeliveryUnit
+	if err := c.Get(ctx, client.ObjectKey{Name: "checkout"}, &got); err != nil {
+		t.Fatal(err)
+	}
+	cond := apimeta.FindStatusCondition(got.Status.Conditions, "Ready")
+	if cond == nil || cond.Status != metav1.ConditionFalse || cond.Reason != "SourceNameConflict" || !strings.Contains(cond.Message, "not owned") {
+		t.Fatalf("Ready condition = %#v", cond)
+	}
+}
+
+func TestDeliveryUnitTriggerRenamePrunesStale(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	unit := &kaprov1alpha1.DeliveryUnit{
+		ObjectMeta: metav1.ObjectMeta{Name: "checkout", Labels: map[string]string{kaprov1alpha1.LabelTeam: "platform"}},
+		Spec: kaprov1alpha1.DeliveryUnitSpec{
+			DefaultFleetRef: "checkout-fleet",
+			Source:          kaprov1alpha1.SourceSpec{Units: []kaprov1alpha1.Unit{{Name: "api"}}},
+			Triggers: []kaprov1alpha1.DeliveryUnitTrigger{{
+				Name:   "old",
+				Source: kaprov1alpha1.TriggerSource{Type: "oci", OCI: &kaprov1alpha1.OCITriggerSource{Repository: "oci://registry.example.com/checkout", TagPattern: "v.*"}},
+			}},
+		},
+	}
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(unit).
+		WithStatusSubresource(&kaprov1alpha1.DeliveryUnit{}).
+		Build()
+	r := &DeliveryUnitReconciler{Client: c, Scheme: scheme, Recorder: record.NewFakeRecorder(8)}
+
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "checkout"}}); err != nil {
+		t.Fatal(err)
+	}
+	var latest kaprov1alpha1.DeliveryUnit
+	if err := c.Get(ctx, client.ObjectKey{Name: "checkout"}, &latest); err != nil {
+		t.Fatal(err)
+	}
+	latest.Spec.Triggers[0].Name = "new"
+	if err := c.Update(ctx, &latest); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "checkout"}}); err != nil {
+		t.Fatal(err)
+	}
+	var oldTrigger kaprov1alpha1.Trigger
+	if err := c.Get(ctx, client.ObjectKey{Name: "checkout-old"}, &oldTrigger); err == nil {
+		t.Fatalf("stale trigger still exists: %#v", oldTrigger)
+	}
+	var newTrigger kaprov1alpha1.Trigger
+	if err := c.Get(ctx, client.ObjectKey{Name: "checkout-new"}, &newTrigger); err != nil {
+		t.Fatalf("new trigger missing: %v", err)
 	}
 }
 

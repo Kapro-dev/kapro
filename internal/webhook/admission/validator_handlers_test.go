@@ -9,6 +9,7 @@ import (
 	admissionv1 "k8s.io/api/admission/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	ctrladmission "sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
@@ -88,6 +89,42 @@ func TestPromotionTriggerValidatorHandleDeniesInvalidSource(t *testing.T) {
 	}
 }
 
+func TestDeliveryUnitValidatorHandle(t *testing.T) {
+	validator := admission.NewDeliveryUnitValidator(newKaproAdmissionDecoder(t), nil)
+	unit := kaproAdmissionDeliveryUnit()
+
+	resp := validator.Handle(context.Background(), admissionRequest(t, admissionv1.Create, unit))
+	if !resp.Allowed {
+		t.Fatalf("expected valid deliveryunit to be allowed, got %s", responseMessage(resp))
+	}
+
+	unit.Spec.Triggers[0].Name = "bad/name"
+	resp = validator.Handle(context.Background(), admissionRequest(t, admissionv1.Create, unit))
+	if resp.Allowed || !strings.Contains(responseMessage(resp), "DNS-1123") {
+		t.Fatalf("expected invalid trigger suffix denial, allowed=%t message=%q", resp.Allowed, responseMessage(resp))
+	}
+}
+
+func TestDeliveryUnitValidatorHandleDeniesSourceConflict(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("add kapro scheme: %v", err)
+	}
+	reader := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(&kaprov1alpha1.Source{
+			ObjectMeta: metav1.ObjectMeta{Name: "checkout"},
+			Spec:       kaprov1alpha1.SourceSpec{Units: []kaprov1alpha1.Unit{{Name: "manual"}}},
+		}).
+		Build()
+	validator := admission.NewDeliveryUnitValidator(newKaproAdmissionDecoder(t), reader)
+
+	resp := validator.Handle(context.Background(), admissionRequest(t, admissionv1.Create, kaproAdmissionDeliveryUnit()))
+	if resp.Allowed || !strings.Contains(responseMessage(resp), "conflicts with an existing Source") {
+		t.Fatalf("expected source conflict denial, allowed=%t message=%q", resp.Allowed, responseMessage(resp))
+	}
+}
+
 func newKaproAdmissionDecoder(t *testing.T) ctrladmission.Decoder {
 	t.Helper()
 	scheme := runtime.NewScheme()
@@ -162,6 +199,29 @@ func kaproAdmissionTrigger() *kaprov1alpha1.Trigger {
 				FleetRef: "checkout",
 				Plans:    []kaprov1alpha1.PlanRef{{Name: "standard"}},
 			},
+		},
+	}
+}
+
+func kaproAdmissionDeliveryUnit() *kaprov1alpha1.DeliveryUnit {
+	return &kaprov1alpha1.DeliveryUnit{
+		TypeMeta:   metav1.TypeMeta{APIVersion: "kapro.io/v1alpha1", Kind: "DeliveryUnit"},
+		ObjectMeta: metav1.ObjectMeta{Name: "checkout"},
+		Spec: kaprov1alpha1.DeliveryUnitSpec{
+			DefaultFleetRef: "checkout",
+			Source: kaprov1alpha1.SourceSpec{
+				Units: []kaprov1alpha1.Unit{{Name: "api"}},
+			},
+			Triggers: []kaprov1alpha1.DeliveryUnitTrigger{{
+				Name: "tags",
+				Source: kaprov1alpha1.TriggerSource{
+					Type: "oci",
+					OCI: &kaprov1alpha1.OCITriggerSource{
+						Repository: "oci://registry.example.com/checkout",
+						TagPattern: "v.*",
+					},
+				},
+			}},
 		},
 	}
 }

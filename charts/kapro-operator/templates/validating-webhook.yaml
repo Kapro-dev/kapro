@@ -131,6 +131,31 @@ webhooks:
           operator: NotIn
           values: [kube-system]
 
+  - name: validate.deliveryunit.kapro.io
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    failurePolicy: {{ .Values.webhook.failurePolicy }}
+    matchPolicy: Equivalent
+    rules:
+      - apiGroups: ["kapro.io"]
+        apiVersions: ["v1alpha1"]
+        resources: ["deliveryunits"]
+        operations: ["CREATE", "UPDATE"]
+    clientConfig:
+      service:
+        namespace: {{ .Release.Namespace }}
+        name: {{ include "kapro-operator.fullname" . }}-webhook
+        path: /validate-kapro-io-v1alpha1-deliveryunit
+        port: 443
+      {{- if not .Values.webhook.certManager.enabled }}
+      caBundle: {{ $caBundle | quote }}
+      {{- end }}
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values: [kube-system]
+
   - name: validate.promotionrun.kapro.io
     admissionReviewVersions: ["v1"]
     sideEffects: None

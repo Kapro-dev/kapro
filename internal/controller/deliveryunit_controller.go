@@ -2,10 +2,12 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
 
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -17,6 +19,8 @@ import (
 
 	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
+
+var errSourceNameConflict = errors.New("source name conflict")
 
 // DeliveryUnitReconciler derives controller-managed Source and Trigger
 // machinery from the canonical user-authored DeliveryUnit.
@@ -49,7 +53,11 @@ func (r *DeliveryUnitReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	sourceName, err := r.reconcileSource(ctx, &unit)
 	if err != nil {
-		return r.patchStatus(ctx, &unit, "", nil, metav1.ConditionFalse, "SourceDeriveFailed", err.Error())
+		reason := "SourceDeriveFailed"
+		if errors.Is(err, errSourceNameConflict) {
+			reason = "SourceNameConflict"
+		}
+		return r.patchStatus(ctx, &unit, "", nil, metav1.ConditionFalse, reason, err.Error())
 	}
 	triggerNames, err := r.reconcileTriggers(ctx, &unit)
 	if err != nil {
@@ -62,6 +70,15 @@ func (r *DeliveryUnitReconciler) Reconcile(ctx context.Context, req ctrl.Request
 }
 
 func (r *DeliveryUnitReconciler) reconcileSource(ctx context.Context, unit *kaprov1alpha1.DeliveryUnit) (string, error) {
+	var existing kaprov1alpha1.Source
+	if err := r.Get(ctx, client.ObjectKey{Name: unit.Name}, &existing); err != nil {
+		if !apierrors.IsNotFound(err) {
+			return "", fmt.Errorf("get Source %s before derivation: %w", unit.Name, err)
+		}
+	} else if !sourceOwnedByDeliveryUnit(&existing, unit) {
+		return "", fmt.Errorf("%w: Source %s already exists and is not owned by DeliveryUnit %s", errSourceNameConflict, unit.Name, unit.Name)
+	}
+
 	source := &kaprov1alpha1.Source{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: kaprov1alpha1.GroupVersion.String(),
@@ -182,17 +199,34 @@ func (r *DeliveryUnitReconciler) suspendDerivedTriggers(ctx context.Context, uni
 	}
 	suspended := true
 	for i := range triggers.Items {
-		trigger := &triggers.Items[i]
-		if !metav1.IsControlledBy(trigger, unit) {
+		existing := &triggers.Items[i]
+		if !metav1.IsControlledBy(existing, unit) {
 			continue
 		}
-		if trigger.Spec.Suspended != nil && *trigger.Spec.Suspended {
+		if existing.Spec.Suspended != nil && *existing.Spec.Suspended {
 			continue
 		}
-		patch := client.MergeFrom(trigger.DeepCopy())
+		trigger := &kaprov1alpha1.Trigger{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: kaprov1alpha1.GroupVersion.String(),
+				Kind:       "Trigger",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:   existing.Name,
+				Labels: copyStringMap(existing.Labels),
+			},
+			Spec: *existing.Spec.DeepCopy(),
+		}
 		trigger.Spec.Suspended = &suspended
-		if err := r.Patch(ctx, trigger, patch); err != nil {
-			return fmt.Errorf("suspend derived Trigger %s: %w", trigger.Name, err)
+		if err := controllerutil.SetControllerReference(unit, trigger, r.Scheme); err != nil {
+			return fmt.Errorf("set DeliveryUnit owner on Trigger %s: %w", existing.Name, err)
+		}
+		if err := r.Patch(ctx, trigger,
+			client.Apply, //nolint:staticcheck
+			client.FieldOwner("kapro-deliveryunit-controller"),
+			client.ForceOwnership,
+		); err != nil {
+			return fmt.Errorf("suspend derived Trigger %s: %w", existing.Name, err)
 		}
 	}
 	return nil
@@ -225,6 +259,7 @@ func (r *DeliveryUnitReconciler) pruneStaleTriggers(ctx context.Context, unit *k
 func (r *DeliveryUnitReconciler) patchStatus(ctx context.Context, unit *kaprov1alpha1.DeliveryUnit, sourceName string, triggerNames []string,
 	status metav1.ConditionStatus, reason, message string) (ctrl.Result, error) {
 	patch := client.MergeFrom(unit.DeepCopy())
+	previous := apimeta.FindStatusCondition(unit.Status.Conditions, "Ready")
 	unit.Status.ObservedGeneration = unit.Generation
 	unit.Status.SourceRef = sourceName
 	unit.Status.TriggerRefs = append([]string(nil), triggerNames...)
@@ -238,10 +273,41 @@ func (r *DeliveryUnitReconciler) patchStatus(ctx context.Context, unit *kaprov1a
 	if err := r.Status().Patch(ctx, unit, patch); err != nil {
 		return ctrl.Result{}, fmt.Errorf("patch DeliveryUnit status: %w", err)
 	}
+	r.recordReadyEvent(unit, previous, status, reason, message)
 	if status != metav1.ConditionTrue {
-		return ctrl.Result{}, nil
+		if reason == "Suspended" {
+			return ctrl.Result{}, nil
+		}
+		return ctrl.Result{RequeueAfter: requeueNormal}, nil
 	}
 	return ctrl.Result{}, nil
+}
+
+func (r *DeliveryUnitReconciler) recordReadyEvent(unit *kaprov1alpha1.DeliveryUnit, previous *metav1.Condition, status metav1.ConditionStatus, reason, message string) {
+	if r.Recorder == nil {
+		return
+	}
+	if previous != nil && previous.Status == status && previous.Reason == reason && previous.ObservedGeneration == unit.Generation {
+		return
+	}
+	eventType := corev1.EventTypeNormal
+	if status != metav1.ConditionTrue && reason != "Suspended" {
+		eventType = corev1.EventTypeWarning
+	}
+	r.Recorder.Eventf(unit, eventType, reason, message)
+}
+
+func sourceOwnedByDeliveryUnit(source *kaprov1alpha1.Source, unit *kaprov1alpha1.DeliveryUnit) bool {
+	for _, ref := range source.OwnerReferences {
+		if ref.APIVersion != kaprov1alpha1.GroupVersion.String() || ref.Kind != "DeliveryUnit" || ref.Name != unit.Name {
+			continue
+		}
+		if unit.UID != "" && ref.UID != unit.UID {
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 func (r *DeliveryUnitReconciler) SetupWithManager(mgr ctrl.Manager) error {

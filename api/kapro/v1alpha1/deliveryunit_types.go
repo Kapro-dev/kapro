@@ -47,6 +47,7 @@ type DeliveryUnitTrigger struct {
 	// is used.
 	// +optional
 	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^([a-z][a-z0-9-]{0,62})?$`
 	Name string `json:"name,omitempty"`
 	// Suspended pauses this derived watcher. Defaults follow Trigger behavior:
 	// safe by default unless explicitly enabled.

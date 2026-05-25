@@ -392,6 +392,7 @@ spec:
                         Name is the stable suffix for the derived Trigger. When empty, "default"
                         is used.
                       maxLength: 63
+                      pattern: ^([a-z][a-z0-9-]{0,62})?$
                       type: string
                     parameters:
                       additionalProperties:
