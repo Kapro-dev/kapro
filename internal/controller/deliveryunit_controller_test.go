@@ -24,8 +24,9 @@ func TestDeliveryUnitDerivesSourceAndTrigger(t *testing.T) {
 	}
 	unit := &kaprov1alpha1.DeliveryUnit{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   "checkout",
-			Labels: map[string]string{"kapro.io/team": "platform"},
+			Name:        "checkout",
+			Labels:      map[string]string{"kapro.io/team": "platform"},
+			Annotations: map[string]string{"kapro.io/cost-center": "4711"},
 		},
 		Spec: kaprov1alpha1.DeliveryUnitSpec{
 			DefaultFleetRef: "checkout-fleet",
@@ -66,6 +67,9 @@ func TestDeliveryUnitDerivesSourceAndTrigger(t *testing.T) {
 	if source.Labels[kaprov1alpha1.LabelUnit] != "checkout" || source.Labels[kaprov1alpha1.LabelManagedBy] != kaprov1alpha1.ManagedByKapro {
 		t.Fatalf("derived source labels = %#v", source.Labels)
 	}
+	if source.Annotations["kapro.io/cost-center"] != "4711" {
+		t.Fatalf("derived source annotations = %#v", source.Annotations)
+	}
 	if !metav1.IsControlledBy(&source, unit) {
 		t.Fatalf("derived source owner references = %#v", source.OwnerReferences)
 	}
@@ -88,6 +92,9 @@ func TestDeliveryUnitDerivesSourceAndTrigger(t *testing.T) {
 	}
 	if trigger.Labels[kaprov1alpha1.LabelUnit] != "checkout" || trigger.Labels[kaprov1alpha1.LabelManagedBy] != kaprov1alpha1.ManagedByKapro {
 		t.Fatalf("derived trigger labels = %#v", trigger.Labels)
+	}
+	if trigger.Annotations["kapro.io/cost-center"] != "4711" {
+		t.Fatalf("derived trigger annotations = %#v", trigger.Annotations)
 	}
 
 	var got kaprov1alpha1.DeliveryUnit
@@ -273,6 +280,57 @@ func TestDeliveryUnitSourceNameConflict(t *testing.T) {
 	}
 	cond := apimeta.FindStatusCondition(got.Status.Conditions, "Ready")
 	if cond == nil || cond.Status != metav1.ConditionFalse || cond.Reason != "SourceNameConflict" || !strings.Contains(cond.Message, "not owned") {
+		t.Fatalf("Ready condition = %#v", cond)
+	}
+}
+
+func TestDeliveryUnitTriggerNameConflict(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	existing := &kaprov1alpha1.Trigger{
+		ObjectMeta: metav1.ObjectMeta{Name: "checkout-tags"},
+		Spec: kaprov1alpha1.TriggerSpec{
+			Source:            kaprov1alpha1.TriggerSource{Type: "oci", OCI: &kaprov1alpha1.OCITriggerSource{Repository: "oci://registry.example.com/manual", TagPattern: "v.*"}},
+			PromotionTemplate: kaprov1alpha1.TriggerTemplate{FleetRef: "manual", DeliveryUnitRef: "manual"},
+		},
+	}
+	unit := &kaprov1alpha1.DeliveryUnit{
+		ObjectMeta: metav1.ObjectMeta{Name: "checkout", Labels: map[string]string{kaprov1alpha1.LabelTeam: "platform"}},
+		Spec: kaprov1alpha1.DeliveryUnitSpec{
+			DefaultFleetRef: "checkout-fleet",
+			Source:          kaprov1alpha1.SourceSpec{Units: []kaprov1alpha1.Unit{{Name: "api"}}},
+			Triggers: []kaprov1alpha1.DeliveryUnitTrigger{{
+				Name:   "tags",
+				Source: kaprov1alpha1.TriggerSource{Type: "oci", OCI: &kaprov1alpha1.OCITriggerSource{Repository: "oci://registry.example.com/checkout", TagPattern: "v.*"}},
+			}},
+		},
+	}
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(existing, unit).
+		WithStatusSubresource(&kaprov1alpha1.DeliveryUnit{}).
+		Build()
+	r := &DeliveryUnitReconciler{Client: c, Scheme: scheme, Recorder: record.NewFakeRecorder(8)}
+
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "checkout"}}); err != nil {
+		t.Fatal(err)
+	}
+	var trigger kaprov1alpha1.Trigger
+	if err := c.Get(ctx, client.ObjectKey{Name: "checkout-tags"}, &trigger); err != nil {
+		t.Fatal(err)
+	}
+	if trigger.Spec.PromotionTemplate.DeliveryUnitRef != "manual" || trigger.Spec.PromotionTemplate.FleetRef != "manual" {
+		t.Fatalf("pre-existing Trigger was overwritten: %#v", trigger.Spec.PromotionTemplate)
+	}
+	var got kaprov1alpha1.DeliveryUnit
+	if err := c.Get(ctx, client.ObjectKey{Name: "checkout"}, &got); err != nil {
+		t.Fatal(err)
+	}
+	cond := apimeta.FindStatusCondition(got.Status.Conditions, "Ready")
+	if cond == nil || cond.Status != metav1.ConditionFalse || cond.Reason != "TriggerNameConflict" || !strings.Contains(cond.Message, "not owned") {
 		t.Fatalf("Ready condition = %#v", cond)
 	}
 }

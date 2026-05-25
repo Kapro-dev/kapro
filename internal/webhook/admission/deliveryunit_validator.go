@@ -21,8 +21,8 @@ type DeliveryUnitValidator struct {
 }
 
 // NewDeliveryUnitValidator returns a configured DeliveryUnitValidator. The
-// reader is optional; pass mgr.GetAPIReader() in production to reject Source
-// name conflicts with pre-existing user-authored Sources.
+// reader is optional; pass mgr.GetAPIReader() in production to reject name
+// conflicts with pre-existing user-authored derived objects.
 func NewDeliveryUnitValidator(decoder admission.Decoder, reader client.Reader) *DeliveryUnitValidator {
 	return &DeliveryUnitValidator{decoder: decoder, Reader: reader}
 }
@@ -37,7 +37,7 @@ func (v *DeliveryUnitValidator) Handle(ctx context.Context, req admission.Reques
 		return admission.Denied(err.Error())
 	}
 	if v.Reader != nil {
-		if err := validateDeliveryUnitSourceConflict(ctx, v.Reader, &du); err != nil {
+		if err := validateDeliveryUnitDerivedObjectConflicts(ctx, v.Reader, &du); err != nil {
 			return admission.Denied(err.Error())
 		}
 	}
@@ -53,13 +53,17 @@ func validateDeliveryUnit(du *kaprov1alpha1.DeliveryUnit) error {
 	}
 	seenUnits := map[string]int{}
 	for i, unit := range du.Spec.Source.Units {
-		if strings.TrimSpace(unit.Name) == "" {
+		name := strings.TrimSpace(unit.Name)
+		if name == "" {
 			return fmt.Errorf("deliveryunit.spec.source.units[%d].name must be non-empty", i)
 		}
-		if first, ok := seenUnits[unit.Name]; ok {
-			return fmt.Errorf("deliveryunit.spec.source.units[%d].name duplicates spec.source.units[%d].name %q", i, first, unit.Name)
+		if name != unit.Name {
+			return fmt.Errorf("deliveryunit.spec.source.units[%d].name must not have leading or trailing whitespace", i)
 		}
-		seenUnits[unit.Name] = i
+		if first, ok := seenUnits[name]; ok {
+			return fmt.Errorf("deliveryunit.spec.source.units[%d].name duplicates spec.source.units[%d].name %q", i, first, name)
+		}
+		seenUnits[name] = i
 	}
 
 	seenTriggers := map[string]int{}
@@ -86,9 +90,18 @@ func validateDeliveryUnit(du *kaprov1alpha1.DeliveryUnit) error {
 		}
 		if err := validatePromotionTrigger(&kaprov1alpha1.Trigger{
 			Spec: kaprov1alpha1.TriggerSpec{
-				Source: trigger.Source,
+				Source:     trigger.Source,
+				Cooldown:   trigger.Cooldown,
+				MaxActive:  trigger.MaxActive,
+				DryRun:     trigger.DryRun,
+				Parameters: copyStringMap(trigger.Parameters),
 				PromotionTemplate: kaprov1alpha1.TriggerTemplate{
-					FleetRef: fleetRef,
+					DeliveryUnitRef: du.Name,
+					FleetRef:        fleetRef,
+					PlanRef:         firstNonEmpty(trigger.PlanRef, du.Spec.DefaultPlanRef),
+					Suspended:       trigger.Suspended,
+					Labels:          copyStringMap(trigger.Labels),
+					Annotations:     copyStringMap(trigger.Annotations),
 				},
 			},
 		}); err != nil {
@@ -98,20 +111,45 @@ func validateDeliveryUnit(du *kaprov1alpha1.DeliveryUnit) error {
 	return nil
 }
 
-func validateDeliveryUnitSourceConflict(ctx context.Context, reader client.Reader, du *kaprov1alpha1.DeliveryUnit) error {
+func validateDeliveryUnitDerivedObjectConflicts(ctx context.Context, reader client.Reader, du *kaprov1alpha1.DeliveryUnit) error {
 	var source kaprov1alpha1.Source
 	if err := reader.Get(ctx, client.ObjectKey{Name: du.Name}, &source); err != nil {
 		if apierrors.IsNotFound(err) {
-			return nil
+			source = kaprov1alpha1.Source{}
+		} else {
+			return fmt.Errorf("deliveryunit source conflict lookup failed: %w", err)
 		}
-		return fmt.Errorf("deliveryunit source conflict lookup failed: %w", err)
+	} else if !isOwnedByDeliveryUnit(&source, du) {
+		return fmt.Errorf("deliveryunit.metadata.name %q conflicts with an existing Source that is not owned by this DeliveryUnit", du.Name)
 	}
-	for _, ref := range source.OwnerReferences {
+
+	for _, trigger := range du.Spec.Triggers {
+		suffix := strings.TrimSpace(trigger.Name)
+		if suffix == "" {
+			suffix = "default"
+		}
+		name := du.Name + "-" + suffix
+		var existing kaprov1alpha1.Trigger
+		if err := reader.Get(ctx, client.ObjectKey{Name: name}, &existing); err != nil {
+			if apierrors.IsNotFound(err) {
+				continue
+			}
+			return fmt.Errorf("deliveryunit trigger conflict lookup failed for %q: %w", name, err)
+		}
+		if !isOwnedByDeliveryUnit(&existing, du) {
+			return fmt.Errorf("deliveryunit trigger %q conflicts with an existing Trigger that is not owned by this DeliveryUnit", name)
+		}
+	}
+	return nil
+}
+
+func isOwnedByDeliveryUnit(obj client.Object, du *kaprov1alpha1.DeliveryUnit) bool {
+	for _, ref := range obj.GetOwnerReferences() {
 		if ref.APIVersion == kaprov1alpha1.GroupVersion.String() && ref.Kind == "DeliveryUnit" && ref.Name == du.Name && du.UID != "" && ref.UID == du.UID {
-			return nil
+			return true
 		}
 	}
-	return fmt.Errorf("deliveryunit.metadata.name %q conflicts with an existing Source that is not owned by this DeliveryUnit", du.Name)
+	return false
 }
 
 // ValidateDeliveryUnit is an exported test helper that exposes the internal validation logic.
@@ -119,10 +157,10 @@ func ValidateDeliveryUnit(du *kaprov1alpha1.DeliveryUnit) error {
 	return validateDeliveryUnit(du)
 }
 
-// ValidateDeliveryUnitSourceConflict is an exported test helper for the Source
-// conflict reference check.
+// ValidateDeliveryUnitSourceConflict is an exported test helper for derived
+// object conflict checks. The name is kept stable for existing tests.
 func ValidateDeliveryUnitSourceConflict(ctx context.Context, reader client.Reader, du *kaprov1alpha1.DeliveryUnit) error {
-	return validateDeliveryUnitSourceConflict(ctx, reader, du)
+	return validateDeliveryUnitDerivedObjectConflicts(ctx, reader, du)
 }
 
 func firstNonEmpty(values ...string) string {
@@ -132,4 +170,15 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func copyStringMap(in map[string]string) map[string]string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }

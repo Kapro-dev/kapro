@@ -89,6 +89,71 @@ func TestPromotionTriggerValidatorHandleDeniesInvalidSource(t *testing.T) {
 	}
 }
 
+func TestPromotionTriggerValidatorHandleDeniesInvalidDurations(t *testing.T) {
+	validator := admission.NewPromotionTriggerValidator(newKaproAdmissionDecoder(t))
+	trigger := kaproAdmissionTrigger()
+	trigger.Labels = map[string]string{admission.LabelKaproTeam: "checkout"}
+	trigger.Spec.Cooldown = "soon"
+
+	resp := validator.Handle(context.Background(), admissionRequest(t, admissionv1.Create, trigger))
+	if resp.Allowed || !strings.Contains(responseMessage(resp), "spec.cooldown") {
+		t.Fatalf("expected invalid cooldown denial, allowed=%t message=%q", resp.Allowed, responseMessage(resp))
+	}
+
+	trigger = kaproAdmissionTrigger()
+	trigger.Labels = map[string]string{admission.LabelKaproTeam: "checkout"}
+	trigger.Spec.Source.OCI.PollInterval = "0s"
+	resp = validator.Handle(context.Background(), admissionRequest(t, admissionv1.Create, trigger))
+	if resp.Allowed || !strings.Contains(responseMessage(resp), "spec.source.oci.pollInterval") {
+		t.Fatalf("expected invalid poll interval denial, allowed=%t message=%q", resp.Allowed, responseMessage(resp))
+	}
+}
+
+func TestPromotionTriggerValidatorHandleDeniesInvalidMaxActive(t *testing.T) {
+	validator := admission.NewPromotionTriggerValidator(newKaproAdmissionDecoder(t))
+	trigger := kaproAdmissionTrigger()
+	trigger.Labels = map[string]string{admission.LabelKaproTeam: "checkout"}
+	trigger.Spec.MaxActive = -1
+
+	resp := validator.Handle(context.Background(), admissionRequest(t, admissionv1.Create, trigger))
+	if resp.Allowed || !strings.Contains(responseMessage(resp), "spec.maxActive") {
+		t.Fatalf("expected invalid maxActive denial, allowed=%t message=%q", resp.Allowed, responseMessage(resp))
+	}
+}
+
+func TestDeliveryUnitValidatorHandleDeniesInvalidTriggerDuration(t *testing.T) {
+	validator := admission.NewDeliveryUnitValidator(newKaproAdmissionDecoder(t), nil)
+	unit := kaproAdmissionDeliveryUnit()
+	unit.Spec.Triggers[0].Cooldown = "-1m"
+
+	resp := validator.Handle(context.Background(), admissionRequest(t, admissionv1.Create, unit))
+	if resp.Allowed || !strings.Contains(responseMessage(resp), "spec.cooldown") {
+		t.Fatalf("expected embedded trigger cooldown denial, allowed=%t message=%q", resp.Allowed, responseMessage(resp))
+	}
+}
+
+func TestDeliveryUnitValidatorHandleDeniesWhitespaceUnitNames(t *testing.T) {
+	validator := admission.NewDeliveryUnitValidator(newKaproAdmissionDecoder(t), nil)
+	unit := kaproAdmissionDeliveryUnit()
+	unit.Spec.Source.Units = append(unit.Spec.Source.Units, kaprov1alpha1.Unit{Name: "api "})
+
+	resp := validator.Handle(context.Background(), admissionRequest(t, admissionv1.Create, unit))
+	if resp.Allowed || !strings.Contains(responseMessage(resp), "leading or trailing whitespace") {
+		t.Fatalf("expected whitespace unit-name denial, allowed=%t message=%q", resp.Allowed, responseMessage(resp))
+	}
+}
+
+func TestDeliveryUnitValidatorHandleDeniesInvalidTriggerMaxActive(t *testing.T) {
+	validator := admission.NewDeliveryUnitValidator(newKaproAdmissionDecoder(t), nil)
+	unit := kaproAdmissionDeliveryUnit()
+	unit.Spec.Triggers[0].MaxActive = -1
+
+	resp := validator.Handle(context.Background(), admissionRequest(t, admissionv1.Create, unit))
+	if resp.Allowed || !strings.Contains(responseMessage(resp), "spec.maxActive") {
+		t.Fatalf("expected embedded trigger maxActive denial, allowed=%t message=%q", resp.Allowed, responseMessage(resp))
+	}
+}
+
 func TestDeliveryUnitValidatorHandle(t *testing.T) {
 	validator := admission.NewDeliveryUnitValidator(newKaproAdmissionDecoder(t), nil)
 	unit := kaproAdmissionDeliveryUnit()
@@ -122,6 +187,29 @@ func TestDeliveryUnitValidatorHandleDeniesSourceConflict(t *testing.T) {
 	resp := validator.Handle(context.Background(), admissionRequest(t, admissionv1.Create, kaproAdmissionDeliveryUnit()))
 	if resp.Allowed || !strings.Contains(responseMessage(resp), "conflicts with an existing Source") {
 		t.Fatalf("expected source conflict denial, allowed=%t message=%q", resp.Allowed, responseMessage(resp))
+	}
+}
+
+func TestDeliveryUnitValidatorHandleDeniesTriggerConflict(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("add kapro scheme: %v", err)
+	}
+	reader := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(&kaprov1alpha1.Trigger{
+			ObjectMeta: metav1.ObjectMeta{Name: "checkout-tags"},
+			Spec: kaprov1alpha1.TriggerSpec{
+				Source:            kaprov1alpha1.TriggerSource{Type: "oci", OCI: &kaprov1alpha1.OCITriggerSource{Repository: "oci://registry.example.com/manual", TagPattern: "v.*"}},
+				PromotionTemplate: kaprov1alpha1.TriggerTemplate{FleetRef: "manual", DeliveryUnitRef: "manual"},
+			},
+		}).
+		Build()
+	validator := admission.NewDeliveryUnitValidator(newKaproAdmissionDecoder(t), reader)
+
+	resp := validator.Handle(context.Background(), admissionRequest(t, admissionv1.Create, kaproAdmissionDeliveryUnit()))
+	if resp.Allowed || !strings.Contains(responseMessage(resp), "conflicts with an existing Trigger") {
+		t.Fatalf("expected trigger conflict denial, allowed=%t message=%q", resp.Allowed, responseMessage(resp))
 	}
 }
 

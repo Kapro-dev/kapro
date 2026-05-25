@@ -21,6 +21,7 @@ import (
 )
 
 var errSourceNameConflict = errors.New("source name conflict")
+var errTriggerNameConflict = errors.New("trigger name conflict")
 
 // DeliveryUnitReconciler derives controller-managed Source and Trigger
 // machinery from the canonical user-authored DeliveryUnit.
@@ -61,7 +62,11 @@ func (r *DeliveryUnitReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 	triggerNames, err := r.reconcileTriggers(ctx, &unit)
 	if err != nil {
-		return r.patchStatus(ctx, &unit, sourceName, triggerNames, metav1.ConditionFalse, "TriggerDeriveFailed", err.Error())
+		reason := "TriggerDeriveFailed"
+		if errors.Is(err, errTriggerNameConflict) {
+			reason = "TriggerNameConflict"
+		}
+		return r.patchStatus(ctx, &unit, sourceName, triggerNames, metav1.ConditionFalse, reason, err.Error())
 	}
 	if err := r.pruneStaleTriggers(ctx, &unit, triggerNames); err != nil {
 		return r.patchStatus(ctx, &unit, sourceName, triggerNames, metav1.ConditionFalse, "TriggerPruneFailed", err.Error())
@@ -75,7 +80,7 @@ func (r *DeliveryUnitReconciler) reconcileSource(ctx context.Context, unit *kapr
 		if !apierrors.IsNotFound(err) {
 			return "", fmt.Errorf("get Source %s before derivation: %w", unit.Name, err)
 		}
-	} else if !sourceOwnedByDeliveryUnit(&existing, unit) {
+	} else if !ownedByDeliveryUnit(&existing, unit) {
 		return "", fmt.Errorf("%w: Source %s already exists and is not owned by DeliveryUnit %s", errSourceNameConflict, unit.Name, unit.Name)
 	}
 
@@ -85,8 +90,9 @@ func (r *DeliveryUnitReconciler) reconcileSource(ctx context.Context, unit *kapr
 			Kind:       "Source",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   unit.Name,
-			Labels: deliveryUnitManagedLabels(unit),
+			Name:        unit.Name,
+			Labels:      deliveryUnitManagedLabels(unit),
+			Annotations: copyStringMap(unit.Annotations),
 		},
 		Spec: *unit.Spec.Source.DeepCopy(),
 	}
@@ -123,14 +129,23 @@ func (r *DeliveryUnitReconciler) reconcileTriggers(ctx context.Context, unit *ka
 		derivedTriggers = append(derivedTriggers, derived{name: name, spec: triggerSpec})
 	}
 	for _, item := range derivedTriggers {
+		var existing kaprov1alpha1.Trigger
+		if err := r.Get(ctx, client.ObjectKey{Name: item.name}, &existing); err != nil {
+			if !apierrors.IsNotFound(err) {
+				return triggerNames, fmt.Errorf("get Trigger %s before derivation: %w", item.name, err)
+			}
+		} else if !ownedByDeliveryUnit(&existing, unit) {
+			return triggerNames, fmt.Errorf("%w: Trigger %s already exists and is not owned by DeliveryUnit %s", errTriggerNameConflict, item.name, unit.Name)
+		}
 		trigger := &kaprov1alpha1.Trigger{
 			TypeMeta: metav1.TypeMeta{
 				APIVersion: kaprov1alpha1.GroupVersion.String(),
 				Kind:       "Trigger",
 			},
 			ObjectMeta: metav1.ObjectMeta{
-				Name:   item.name,
-				Labels: deliveryUnitManagedLabels(unit),
+				Name:        item.name,
+				Labels:      deliveryUnitManagedLabels(unit),
+				Annotations: copyStringMap(unit.Annotations),
 			},
 			Spec: item.spec,
 		}
@@ -212,8 +227,9 @@ func (r *DeliveryUnitReconciler) suspendDerivedTriggers(ctx context.Context, uni
 				Kind:       "Trigger",
 			},
 			ObjectMeta: metav1.ObjectMeta{
-				Name:   existing.Name,
-				Labels: copyStringMap(existing.Labels),
+				Name:        existing.Name,
+				Labels:      copyStringMap(existing.Labels),
+				Annotations: copyStringMap(existing.Annotations),
 			},
 			Spec: *existing.Spec.DeepCopy(),
 		}
@@ -297,8 +313,8 @@ func (r *DeliveryUnitReconciler) recordReadyEvent(unit *kaprov1alpha1.DeliveryUn
 	r.Recorder.Eventf(unit, eventType, reason, message)
 }
 
-func sourceOwnedByDeliveryUnit(source *kaprov1alpha1.Source, unit *kaprov1alpha1.DeliveryUnit) bool {
-	for _, ref := range source.OwnerReferences {
+func ownedByDeliveryUnit(obj client.Object, unit *kaprov1alpha1.DeliveryUnit) bool {
+	for _, ref := range obj.GetOwnerReferences() {
 		if ref.APIVersion != kaprov1alpha1.GroupVersion.String() || ref.Kind != "DeliveryUnit" || ref.Name != unit.Name {
 			continue
 		}

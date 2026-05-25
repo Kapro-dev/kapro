@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"time"
 
 	admissionv1 "k8s.io/api/admission/v1"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
@@ -67,12 +68,36 @@ func validatePromotionTrigger(pt *kaprov1alpha1.Trigger) error {
 	if pt.Spec.PromotionTemplate.FleetRef == "" {
 		return fmt.Errorf("spec.promotionTemplate.fleetRef is required")
 	}
+	if pt.Spec.MaxActive < 0 {
+		return fmt.Errorf("spec.maxActive must be at least 1 when set")
+	}
+	if pt.Spec.Cooldown != "" {
+		if err := validatePositiveDuration("spec.cooldown", pt.Spec.Cooldown); err != nil {
+			return err
+		}
+	}
+	if src.OCI != nil && src.OCI.PollInterval != "" {
+		if err := validatePositiveDuration("spec.source.oci.pollInterval", src.OCI.PollInterval); err != nil {
+			return err
+		}
+	}
 	// Plans are optional on the trigger template; when empty the Promotion
 	// controller inherits the inline plan from the parent Fleet.
 	for i, ref := range pt.Spec.PromotionTemplate.Plans {
 		if ref.Name == "" {
 			return fmt.Errorf("spec.promotionTemplate.plans[%d].name is required", i)
 		}
+	}
+	return nil
+}
+
+func validatePositiveDuration(path, value string) error {
+	parsed, err := time.ParseDuration(value)
+	if err != nil {
+		return fmt.Errorf("%s must parse as a duration: %w", path, err)
+	}
+	if parsed <= 0 {
+		return fmt.Errorf("%s must be greater than 0", path)
 	}
 	return nil
 }
