@@ -3,6 +3,9 @@
 Use this path when spokes should pull OCI artifacts directly with Kapro's
 spoke-side OCI delivery core, without requiring Flux or Argo CD on the spoke.
 
+Artifact input: an OCI bundle artifact must exist in the registry path used by
+`spec.substrate.parameters.repository`.
+
 ```bash
 git clone --branch main https://github.com/Kapro-dev/kapro.git
 cd kapro

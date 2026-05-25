@@ -3,6 +3,10 @@
 Use this path when Argo CD already owns one `Application` per target cluster
 and Kapro should promote by updating `spec.source.targetRevision`.
 
+Artifact input: Argo CD must be able to sync the repository and revision named
+by each `Application`. Kapro changes the revision; Argo CD performs the sync.
+OCI is only involved if your Argo CD Application source uses OCI.
+
 ```bash
 git clone --branch main https://github.com/Kapro-dev/kapro.git
 cd kapro

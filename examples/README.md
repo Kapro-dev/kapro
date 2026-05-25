@@ -64,6 +64,34 @@ oras discover --plain-http localhost:5001/kapro/hello-world:v0.1.0
 The ORAS project documents this flow with a local zot registry in its quickstart:
 https://oras.land/docs/quickstart/
 
+## Artifact Inputs
+
+Not every example needs OCI.
+
+| Path | What Must Exist |
+|---|---|
+| Direct apply | A container image tag that Kubernetes can pull |
+| Flux GitOps | Git or Flux source objects reachable by Flux |
+| Argo CD | Argo CD `Application` objects and the repo/revision they point at |
+| OCI substrate | OCI bundle artifacts in a registry |
+| OCI triggers | Registry tags for the Trigger to observe |
+| SDK, monitoring, RBAC, archive docs | Usually no OCI artifact; follow the README for the command or manifest |
+
+For public demos, prefer local throwaway inputs:
+
+```bash
+# image-style examples
+docker pull nginx:1.27
+docker tag nginx:1.27 localhost:5001/kapro/hello-world:0.1.0
+docker push localhost:5001/kapro/hello-world:0.1.0
+
+# generic OCI artifact examples
+echo "hello from kapro" > artifact.txt
+oras push --plain-http localhost:5001/kapro/hello-world:v0.1.0 \
+  --artifact-type application/vnd.kapro.example \
+  artifact.txt:text/plain
+```
+
 | Chapter | Topic |
 |---|---|
 | `00-deliveryunit-lessons/` | DeliveryUnit lessons from hello world to safe triggers |

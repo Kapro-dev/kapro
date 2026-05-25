@@ -17,6 +17,23 @@ DeliveryUnit + Plan + Fleet + Promotion
 | `02-argo/` | Argo CD owns application sync |
 | `03-oci/` | Spokes pull OCI bundle artifacts |
 
+## Artifact Inputs
+
+Each quickstart needs a different kind of input:
+
+| Folder | Artifact/Input |
+|---|---|
+| `00-flux/` | Flux source or Git state for the referenced workload |
+| `01-direct/` | Container image tag in the generated Deployment |
+| `02-argo/` | Argo CD Applications and their Git revisions |
+| `03-oci/` | OCI bundle artifact in a registry |
+
+Use a local registry for image or OCI examples while learning:
+
+```bash
+docker run -d --restart=always -p 5001:5000 --name kapro-registry ghcr.io/project-zot/zot-linux-amd64:latest
+```
+
 Validate quickstart YAML with:
 
 ```bash

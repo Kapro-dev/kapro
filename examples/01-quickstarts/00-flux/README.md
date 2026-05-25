@@ -7,6 +7,10 @@ Flux reconciles workload state.
 Promotion -> Fleet -> Flux substrate -> Flux-managed clusters
 ```
 
+This path does not require Kapro to pull OCI bundles. It assumes Flux can reach
+the Git or Flux source objects referenced by the workload configuration. If your
+Flux source is an OCIRepository, seed that registry separately.
+
 Apply in order:
 
 ```bash

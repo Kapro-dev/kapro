@@ -2,6 +2,16 @@
 
 This repo is a greenfield Kapro scaffold for direct Kubernetes apply.
 
+Artifact input: the Deployment image must be pullable by the target cluster. For
+local Kind testing, push a disposable image to a local registry:
+
+```bash
+docker run -d --restart=always -p 5001:5000 --name kapro-registry ghcr.io/project-zot/zot-linux-amd64:latest
+docker pull nginx:1.27
+docker tag nginx:1.27 localhost:5001/kapro/checkout-direct:0.1.0
+docker push localhost:5001/kapro/checkout-direct:0.1.0
+```
+
 Apply order:
 
 1. substrates/

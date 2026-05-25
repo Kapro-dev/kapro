@@ -36,6 +36,23 @@ The trigger example is intentionally suspended and dry-run by default. Change
 those fields only after the registry, signature, Fleet, and Plan policy are
 ready for real automatic promotion intent.
 
+Artifact inputs by lesson:
+
+| Lessons | Input |
+|---|---|
+| `00` to `07` | YAML authoring examples only; no registry is required to read or validate them |
+| `08` and `09` | OCI tags if you enable the Trigger; keep suspended for inspection |
+
+Use ORAS with a local registry for the OCI trigger lessons:
+
+```bash
+docker run -d --restart=always -p 5001:5000 --name kapro-registry ghcr.io/project-zot/zot-linux-amd64:latest
+echo "hello trigger" > artifact.txt
+oras push --plain-http localhost:5001/tutorial/hello-world:v0.4.0 \
+  --artifact-type application/vnd.kapro.example \
+  artifact.txt:text/plain
+```
+
 Validate the lesson set locally:
 
 ```bash
