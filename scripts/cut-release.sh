@@ -4,8 +4,8 @@
 # release is good *before* invoking this script.
 #
 # Usage:
-#   VERSION=v0.1.2 scripts/cut-release.sh
-#   VERSION=v0.1.2 KAPRO_RELEASE_SKIP_TAG=true scripts/cut-release.sh   # re-watch existing tag
+#   VERSION=v0.6.0 scripts/cut-release.sh
+#   VERSION=v0.6.0 KAPRO_RELEASE_SKIP_TAG=true scripts/cut-release.sh   # re-watch existing tag
 #
 # Required env:
 #   VERSION                Tag to push (must start with 'v'). Required.
@@ -93,7 +93,7 @@ need git
 need gh
 [ "${DRY_RUN}" = "true" ] || need make
 
-[ -n "${VERSION}" ] || abort "VERSION not set; usage: VERSION=v0.1.2 scripts/cut-release.sh"
+[ -n "${VERSION}" ] || abort "VERSION not set; usage: VERSION=v0.6.0 scripts/cut-release.sh"
 [[ "${VERSION}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]] \
   || abort "VERSION ${VERSION} is not a valid semver tag (expected vMAJOR.MINOR.PATCH[-PRE])"
 

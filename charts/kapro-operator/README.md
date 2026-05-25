@@ -49,18 +49,32 @@ from `kapro.io/v1alpha1` and controller-owned runtime CRDs are served from
 `runtime.kapro.io/v1alpha1`. The chart does not perform automatic conversion
 from older alpha manifests.
 
-```bash
-helm upgrade kapro charts/kapro-operator \
-  --namespace kapro-system
-```
-
-CRDs in `crds/` are installed on first install. For CRD upgrades, apply them
-explicitly before upgrading the Helm release:
+For a same-line chart upgrade after CRDs are current:
 
 ```bash
-kubectl apply -f charts/kapro-operator/crds
-helm upgrade kapro charts/kapro-operator --namespace kapro-system
+KAPRO_VERSION=0.6.0
+KAPRO_CHART="https://github.com/Kapro-dev/kapro/releases/download/v${KAPRO_VERSION}/kapro-operator-${KAPRO_VERSION}.tgz"
+
+helm upgrade kapro "${KAPRO_CHART}" \
+  --namespace kapro-system \
+  --wait
 ```
+
+CRDs in `crds/` are installed on first install. Helm does not upgrade CRDs
+automatically, so apply CRDs explicitly before upgrading the Helm release:
+
+```bash
+KAPRO_VERSION=0.6.0
+KAPRO_CHART="https://github.com/Kapro-dev/kapro/releases/download/v${KAPRO_VERSION}/kapro-operator-${KAPRO_VERSION}.tgz"
+tmpdir="$(mktemp -d)"
+
+helm pull "${KAPRO_CHART}" --untar --untardir "${tmpdir}"
+kubectl apply -f "${tmpdir}/kapro-operator/crds"
+helm upgrade kapro "${KAPRO_CHART}" --namespace kapro-system --wait
+```
+
+From a source checkout, replace the release URL with `charts/kapro-operator`
+and apply `charts/kapro-operator/crds`.
 
 ## Uninstall
 

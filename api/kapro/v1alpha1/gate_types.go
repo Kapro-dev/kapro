@@ -20,7 +20,7 @@ const (
 // +kubebuilder:validation:XValidation:rule="!has(self.expressionRef)",message="expressionRef is reserved until external gate expression resolution is implemented"
 type GatePolicySpec struct {
 	// ExpressionRef is reserved for future external gate expression resolution.
-	// v0.1.2 rejects this field so referenced gates cannot become a silent no-op.
+	// v0.6.0 rejects this field so referenced gates cannot become a silent no-op.
 	// +kubebuilder:validation:MinLength=1
 	// +optional
 	ExpressionRef string `json:"expressionRef,omitempty"`

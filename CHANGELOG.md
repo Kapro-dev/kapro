@@ -7,6 +7,10 @@ binding compatibility record for each tag.
 
 ## Unreleased
 
+No user-visible changes yet.
+
+## v0.6.0 - 2026-05-25
+
 ### ⚠️ Breaking — 0.6 public/runtime API reset
 
 Kapro now serves user-authored desired state from `kapro.io/v1alpha1` and

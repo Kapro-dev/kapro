@@ -10,7 +10,10 @@ together. The `0.6.0` chart defaults to
 
 - Kubernetes cluster access with permission to create CRDs and cluster-scoped RBAC.
 - Helm 3.
+- Docker, Kind, and `kubectl` when you want to run the local examples on a
+  disposable cluster.
 - Go 1.25+ when you want the optional `kapro` CLI from source.
+- ORAS when you want to run OCI artifact examples locally.
 
 The chart has no other dependencies. By default the admission webhook
 uses an auto-generated self-signed serving certificate, so cert-manager
