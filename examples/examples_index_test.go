@@ -112,7 +112,7 @@ func TestEveryExampleRunScriptHasValidSyntax(t *testing.T) {
 			}
 			return nil
 		}
-		if entry.Name() != "run.sh" && entry.Name() != "run-example.sh" {
+		if entry.Name() != "run.sh" && entry.Name() != "run-all.sh" && entry.Name() != "run-example.sh" {
 			return nil
 		}
 		output, err := exec.Command("bash", "-n", path).CombinedOutput()

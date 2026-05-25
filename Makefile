@@ -43,10 +43,10 @@ vet: ## Run go vet
 	go vet ./...
 
 .PHONY: verify
-verify: validate-yaml-json check-markdown-links check-release-train fmt vet lint build test conformance cli-smoke cli-stress ## Run full checks with coverage (use before pushing)
+verify: validate-yaml-json check-markdown-links check-examples check-release-train fmt vet lint build test conformance cli-smoke cli-stress ## Run full checks with coverage (use before pushing)
 
 .PHONY: verify-local
-verify-local: validate-yaml-json check-markdown-links check-release-train fmt vet lint build test-no-cover conformance cli-smoke cli-stress ## Run local checks without coverage tooling
+verify-local: validate-yaml-json check-markdown-links check-examples check-release-train fmt vet lint build test-no-cover conformance cli-smoke cli-stress ## Run local checks without coverage tooling
 
 .PHONY: lint
 lint: $(GOLANGCI_LINT) ## Run golangci-lint
@@ -59,6 +59,11 @@ validate-yaml-json: ## Validate CI, example, monitoring YAML, Prometheus rules, 
 .PHONY: check-markdown-links
 check-markdown-links: ## Check local links in README/docs/examples/08-monitoring Markdown
 	python3 scripts/check-markdown-links.py
+
+.PHONY: check-examples
+check-examples: ## Execute every public example run.sh in safe check mode
+	examples/run-all.sh check
+	go test ./examples/...
 
 .PHONY: check-release-train
 check-release-train: ## Check pre-stable release train guidance stays explicit

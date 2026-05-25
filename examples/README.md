@@ -24,7 +24,8 @@ Extension authors should start with `05-plugins/`, then `06-sdk-go/`, then the
 minimal custom actuator in `07-actuator-hello-world/`.
 
 Every example directory includes a `run.sh` wrapper. The default command is a
-safe local check:
+safe local check. The README shows the lesson and the script is the executable
+entrypoint for that same lesson:
 
 ```bash
 ./examples/run.sh
@@ -41,6 +42,10 @@ artifact for OCI lessons:
 ./examples/06-sdk-go/00-promote-with-builder/run.sh run
 ./examples/01-quickstarts/03-oci/run.sh oci-prep
 ```
+
+CI runs the same entrypoints through `make check-examples`, which calls
+`examples/run-all.sh check` and then `go test ./examples/...`. That keeps the
+public READMEs, scripts, YAML, and Go examples connected.
 
 ## Local Lab
 
@@ -131,6 +136,7 @@ oras push --plain-http localhost:5001/kapro/hello-world:v0.1.0 \
 Use these checks before copying an example into docs, demos, or release notes:
 
 ```bash
+make check-examples
 go test ./examples/...
 scripts/validate-yaml-json
 python3 scripts/check-markdown-links.py examples
