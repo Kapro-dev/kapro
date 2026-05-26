@@ -58,7 +58,7 @@ Flags worth knowing:
 |---|---|---|
 | `--hub-url` | (required) | Hub kube-apiserver URL reachable from the spoke. |
 | `--ttl` | `1h` | Bootstrap slot TTL written to `Cluster.spec.bootstrap.ttl`. |
-| `--ca-from` | `hub-kubeconfig` | Source for the hub CA bundle: `hub-kubeconfig`, `file`, `inline`, `none`. |
+| `--ca-from` | `hub-kubeconfig` | Source for the hub CA bundle: `hub-kubeconfig`, `file`, `inline`, `none`. Use `none` only when the hub API server certificate chains to a public CA trusted by the spoke. |
 | `--namespace` | `kapro-system` | Hub namespace where the bootstrap Secret lives. |
 | `--spoke-namespace` | `kapro-system` | Namespace the rendered Secret will target on the spoke. |
 | `--wait-timeout` | `30s` | How long to wait for the hub to populate `status.bootstrap.issuedBootstrapKubeconfig`. |
@@ -101,6 +101,21 @@ spec:
 ```bash
 kubectl config use-context my-spoke-cluster
 ```
+
+## CA trust
+
+Kapro does not use apiserver webhook token authentication for cluster
+registration. The spoke talks directly to the hub kube-apiserver with the
+bootstrap kubeconfig and then with an issued client certificate. That means the
+spoke must verify the hub API server TLS identity.
+
+The safest default is `--ca-from hub-kubeconfig`, which copies the hub CA bundle
+from your local kubeconfig into the generated Helm values. Use `--ca-from=file`
+or `--ca-from=inline` when the spoke needs a different CA bundle. Use
+`--ca-from=none` only for hubs with certificates issued by a public CA trusted
+inside the spoke cluster; using it with a private or self-signed hub endpoint
+will either fail TLS verification or encourage disabling verification outside
+Kapro.
 
 ## Step 3 — Apply the Secret and install the chart
 
@@ -221,8 +236,8 @@ The hub approver isn't matching the CSR. Common causes:
 - The bootstrap kubeconfig Secret was applied to the wrong spoke (the
   bootstrap SA is bound to a specific cluster name). Re-run
   `kapro spoke bootstrap` for **this** cluster name.
-- Slot TTL expired (`spec.bootstrap.expiresAt` in the past). Re-run with a
-  longer `--ttl` or recreate the Cluster.
+- Slot TTL expired (`spec.bootstrap.expiresAt` in the past). Set
+  `spec.bootstrap.expiresAt` to a future time or recreate the Cluster.
 - Slot already consumed (`status.bootstrap.used: true` with a different
   `boundCSRName`). Delete and recreate the Cluster to mint a fresh
   slot.
@@ -232,8 +247,9 @@ The hub approver isn't matching the CSR. Common causes:
 The hub CA bundle baked into the chart values is wrong or missing. The
 `--ca-from hub-kubeconfig` default extracts it from your local kubeconfig —
 if that kubeconfig points at a private CA the spoke doesn't trust, use
-`--ca-from file --ca-file /path/to/hub-ca.crt` instead. For a hub with a
-publicly trusted cert, `--ca-from none` is fine.
+`--ca-from file --ca-file /path/to/hub-ca.crt` instead. Use `--ca-from none`
+only when the hub certificate chains to a public CA already trusted by the
+spoke.
 
 ### Heartbeat is stale but pod is running
 
