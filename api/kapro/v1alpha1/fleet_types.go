@@ -22,9 +22,9 @@ type FleetSpec struct {
 	// workflows. New manifests should use DeliveryUnit.spec.source instead.
 	// +optional
 	Source *SourceSpec `json:"source,omitempty"`
-	// Substrate selects the substrate-neutral defaults copied to
+	// Delivery selects the substrate-neutral delivery defaults copied to
 	// generated Cluster objects.
-	Substrate SubstrateBindingSpec `json:"substrate"`
+	Substrate SubstrateBindingSpec `json:"delivery"`
 	// Clusters defines the target clusters in the fleet.
 	// +kubebuilder:validation:MinItems=1
 	Clusters []ClusterRef `json:"clusters"`

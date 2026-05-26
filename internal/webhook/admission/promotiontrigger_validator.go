@@ -66,10 +66,10 @@ func validatePromotionTrigger(pt *kaprov1alpha1.Trigger) error {
 		return fmt.Errorf("spec.source.type %q is unsupported (built-in: oci)", src.Type)
 	}
 	if pt.Spec.PromotionTemplate.DeliveryUnitRef == "" {
-		return fmt.Errorf("spec.promotionTemplate.deliveryUnitRef is required")
+		return fmt.Errorf("spec.promotionTemplate.unit is required")
 	}
 	if pt.Spec.PromotionTemplate.FleetRef == "" {
-		return fmt.Errorf("spec.promotionTemplate.fleetRef is required")
+		return fmt.Errorf("spec.promotionTemplate.fleet is required")
 	}
 	if pt.Spec.MaxActive != 0 && pt.Spec.MaxActive < 1 {
 		return fmt.Errorf("spec.maxActive must be at least 1 when set")

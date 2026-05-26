@@ -249,7 +249,7 @@ type Event struct {
 type EventData struct {
 	Promotion    string `json:"promotion"`
 	PromotionUID string `json:"promotionUID,omitempty"`
-	FleetRef     string `json:"fleetRef,omitempty"`
+	FleetRef     string `json:"fleet,omitempty"`
 	// Phase is the Promotion.status.phase for whole-Promotion / attempt
 	// events, and the PromotionRun.status.phase for wave/stage/gate
 	// events. See Event.Phase for the full semantic.

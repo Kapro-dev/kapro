@@ -9,6 +9,32 @@ binding compatibility record for each tag.
 
 No user-visible changes yet.
 
+## v0.6.2 - 2026-05-26
+
+### ⚠️ Breaking — public-preview YAML reset
+
+Pulled the major v0.7 naming cleanup into v0.6.2 so public-preview users start
+from one clean YAML contract:
+
+- `Cluster.spec.substrate` and `Fleet.spec.substrate` are now
+  `spec.delivery`.
+- `spec.delivery.substrateRef` is removed; use `spec.delivery.ref`.
+- `DeliveryUnit.spec.defaultFleetRef/defaultPlanRef` are now
+  `defaultFleet/defaultPlan`.
+- Embedded trigger and Promotion action operands now use `unit`, `fleet`, and
+  `plan` instead of scalar `deliveryUnitRef`, `fleetRef`, and `planRef`.
+- `Source.spec.substrateRef` and `SubstrateDiscoveryPolicy.spec.substrateRef`
+  are now `substrate`.
+- Remaining public `suspend` fields are now `suspended`.
+- `Substrate.spec.discovery.enabled` is replaced by
+  `Substrate.spec.discovery.suspended`; omit `suspended` or set it to `false`
+  for active discovery.
+- `Substrate.spec.substrate.kind/actuator` is removed. Use
+  `Substrate.spec.classRef.name` plus typed `configRef`.
+
+Generated examples, CLI scaffolding, CRDs, Helm chart CRDs, bootstrap CRDs, and
+release install docs now use the v0.6.2 shape.
+
 ## v0.6.0 - 2026-05-25
 
 ### ⚠️ Breaking — 0.6 public/runtime API reset
@@ -16,7 +42,7 @@ No user-visible changes yet.
 Kapro now serves user-authored desired state from `kapro.io/v1alpha1` and
 controller-owned execution records from `runtime.kapro.io/v1alpha1`.
 `Backend` is renamed to `Substrate`, delivery references use
-`spec.substrate.ref`, and user-facing Argo substrate names use `argo`.
+`spec.delivery.ref`, and user-facing Argo substrate names use `argo`.
 
 The 0.6 reset intentionally has no conversion webhook: no public-preview or
 production users depend on the prototype shape. Delete old prototype CRDs and
@@ -686,7 +712,7 @@ kapro lint -o json promotion.yaml
 Checks:
 
 - **Fleet** — exactly one of `spec.source` / `spec.sourceRef`,
-  `spec.substrate.ref` set, `spec.clusters` non-empty.
+  `spec.delivery.ref` set, `spec.clusters` non-empty.
 - **Promotion** — `spec.fleetRef` set, `spec.version` or
   `spec.versions` set, `spec.timeout` set (advisory), no duplicate
   scope targets, non-empty Plan refs.
@@ -1006,7 +1032,7 @@ be rewritten with a one-liner.
   `Promotion.status`. The model mirrors `Deployment → ReplicaSet → Pod` and
   Docker Swarm `Service → Task → Container`: intent is durable, attempts are
   ephemeral.
-- `Promotion.spec.fleetRef` references the parent Fleet; the
+- `Promotion.spec.fleet` references the parent Fleet; the
   PromotionController inherits the rollout plan from `Fleet.spec.plan`
   when `Promotion.spec.plans` is unset.
 - `Promotion.status.activeAttemptRef` (current non-terminal `PromotionRun`)
@@ -1108,7 +1134,7 @@ be rewritten with a one-liner.
 
 ### Performance
 
-- `PromotionController` now indexes `Promotion.spec.fleetRef` and uses
+- `PromotionController` now indexes `Promotion.spec.fleet` and uses
   `MatchingFields` to enqueue only the Promotions referencing a changed
   Fleet, instead of listing every Promotion and filtering in
   memory.

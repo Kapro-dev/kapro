@@ -81,7 +81,7 @@ func TestFleetClusterTemplate_StaticSourceImportsKubeconfigRefs(t *testing.T) {
 					Labels: map[string]string{"owner": "platform"},
 				},
 				Spec: kaprov1alpha1.ClusterSpec{
-					Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: kaprov1alpha1.SubstrateModePull, SubstrateRef: "oci"},
+					Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: kaprov1alpha1.SubstrateModePull, Ref: "oci"},
 				},
 			},
 		},
@@ -145,8 +145,8 @@ func TestFleetClusterTemplate_ImportsDiscoveredClusters(t *testing.T) {
 				},
 				Spec: kaprov1alpha1.ClusterSpec{
 					Substrate: kaprov1alpha1.SubstrateBindingSpec{
-						Mode:         kaprov1alpha1.SubstrateModePull,
-						SubstrateRef: "oci",
+						Mode: kaprov1alpha1.SubstrateModePull,
+						Ref:  "oci",
 					},
 				},
 			},
@@ -222,7 +222,7 @@ func TestFleetClusterTemplate_SelectorFilters(t *testing.T) {
 			Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"env": "prod"}},
 			Template: kaprov1alpha1.ClusterTemplateBody{
 				Spec: kaprov1alpha1.ClusterSpec{
-					Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: kaprov1alpha1.SubstrateModePull, SubstrateRef: "oci"},
+					Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: kaprov1alpha1.SubstrateModePull, Ref: "oci"},
 				},
 			},
 		},
@@ -260,14 +260,14 @@ func TestFleetClusterTemplate_LeavesUnmanagedClustersAlone(t *testing.T) {
 			Labels: map[string]string{"hand": "authored"},
 		},
 		Spec: kaprov1alpha1.ClusterSpec{
-			Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: kaprov1alpha1.SubstrateModePush, SubstrateRef: "flux"},
+			Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: kaprov1alpha1.SubstrateModePush, Ref: "flux"},
 		},
 	}
 	tmpl := &kaprov1alpha1.ClusterTemplate{
 		ObjectMeta: metav1.ObjectMeta{Name: "tmpl"},
 		Spec: kaprov1alpha1.ClusterTemplateSpec{
 			Source:   kaprov1alpha1.ClusterTemplateSource{GCP: &kaprov1alpha1.GCPFleetSource{Project: "p1"}},
-			Template: kaprov1alpha1.ClusterTemplateBody{Spec: kaprov1alpha1.ClusterSpec{Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: kaprov1alpha1.SubstrateModePull, SubstrateRef: "oci"}}},
+			Template: kaprov1alpha1.ClusterTemplateBody{Spec: kaprov1alpha1.ClusterSpec{Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: kaprov1alpha1.SubstrateModePull, Ref: "oci"}}},
 		},
 	}
 
@@ -309,7 +309,7 @@ func TestFleetClusterTemplate_Suspend(t *testing.T) {
 		Spec: kaprov1alpha1.ClusterTemplateSpec{
 			Source:   kaprov1alpha1.ClusterTemplateSource{GCP: &kaprov1alpha1.GCPFleetSource{Project: "p1"}},
 			Suspend:  true,
-			Template: kaprov1alpha1.ClusterTemplateBody{Spec: kaprov1alpha1.ClusterSpec{Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: kaprov1alpha1.SubstrateModePull, SubstrateRef: "oci"}}},
+			Template: kaprov1alpha1.ClusterTemplateBody{Spec: kaprov1alpha1.ClusterSpec{Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: kaprov1alpha1.SubstrateModePull, Ref: "oci"}}},
 		},
 	}
 	c := fake.NewClientBuilder().WithScheme(scheme).
@@ -346,7 +346,7 @@ func TestFleetClusterTemplate_SourceNotImplementedSurfacesCondition(t *testing.T
 		ObjectMeta: metav1.ObjectMeta{Name: "aws-stub"},
 		Spec: kaprov1alpha1.ClusterTemplateSpec{
 			Source:   kaprov1alpha1.ClusterTemplateSource{AWS: &kaprov1alpha1.AWSFleetSource{Region: "eu-west-1"}},
-			Template: kaprov1alpha1.ClusterTemplateBody{Spec: kaprov1alpha1.ClusterSpec{Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: kaprov1alpha1.SubstrateModePush, SubstrateRef: "flux"}}},
+			Template: kaprov1alpha1.ClusterTemplateBody{Spec: kaprov1alpha1.ClusterSpec{Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: kaprov1alpha1.SubstrateModePush, Ref: "flux"}}},
 		},
 	}
 	c := fake.NewClientBuilder().WithScheme(scheme).
@@ -395,7 +395,7 @@ func TestFleetClusterTemplate_PrunesOrphans(t *testing.T) {
 		Spec: kaprov1alpha1.ClusterTemplateSpec{
 			Source:   kaprov1alpha1.ClusterTemplateSource{GCP: &kaprov1alpha1.GCPFleetSource{Project: "p1"}},
 			Prune:    true,
-			Template: kaprov1alpha1.ClusterTemplateBody{Spec: kaprov1alpha1.ClusterSpec{Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: kaprov1alpha1.SubstrateModePull, SubstrateRef: "oci"}}},
+			Template: kaprov1alpha1.ClusterTemplateBody{Spec: kaprov1alpha1.ClusterSpec{Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: kaprov1alpha1.SubstrateModePull, Ref: "oci"}}},
 		},
 	}
 	orphan := &kaprov1alpha1.Cluster{

@@ -262,12 +262,12 @@ func providerDriverForSubstrate(spec kaprov1alpha1.SubstrateSpec) kaprov1alpha1.
 }
 
 // resolveSubstrate reads the cluster-scoped Substrate referenced by
-// fc.spec.substrate.ref. Returns a configuration error (not a wrapped
+// fc.spec.delivery.ref. Returns a configuration error (not a wrapped
 // IsNotFound) when the ref is missing/empty so per-app status carries a
 // stable human-readable message.
 func (l *deliveryLoop) resolveSubstrate(ctx context.Context, hub client.Client, name string) (*kaprov1alpha1.Substrate, error) {
 	if name == "" {
-		return nil, fmt.Errorf("cluster.spec.substrate.ref is empty")
+		return nil, fmt.Errorf("cluster.spec.delivery.ref is empty")
 	}
 	bp := &kaprov1alpha1.Substrate{}
 	if err := hub.Get(ctx, client.ObjectKey{Name: name}, bp); err != nil {

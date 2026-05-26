@@ -469,7 +469,7 @@ func checkGitOpsSubstrates(ctx context.Context, c client.Client) doctorFinding {
 		kind := substrate.Spec.SubstrateKind()
 		executionMode := string(substrate.Spec.ExecutionMode())
 		mode := "configured"
-		if substrate.Spec.Discovery != nil && substrate.Spec.Discovery.Enabled {
+		if substrate.Spec.Discovery.Active() {
 			mode = "observe"
 			if substrate.Spec.Discovery.ManagementPolicy != "" {
 				mode = strings.ToLower(substrate.Spec.Discovery.ManagementPolicy)

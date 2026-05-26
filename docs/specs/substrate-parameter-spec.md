@@ -98,9 +98,10 @@ spec:
     mode: hub-push
 ```
 
-`Substrate.spec.substrate` and `Substrate.spec.execution` are the open,
-non-typed path. The old prototype `driver`, `adapter`, and `runtime` fields are
-not part of the 0.6 public-preview CRD.
+`Substrate.spec.classRef`, `Substrate.spec.configRef`, and
+`Substrate.spec.execution` are the public path. The old prototype `driver`,
+`adapter`, `runtime`, and interim `spec.substrate.kind/actuator` fields are not
+part of the 0.6.2 public-preview CRD.
 
 ## Typed Config CRDs
 
@@ -246,7 +247,7 @@ spoke delivery code; it is not the preferred extension point for new substrate
 authors. New spoke-pull substrates should use KSP instead of adding another
 actuator shape.
 
-The `0.6.0` conformance gate therefore has three parts:
+The `0.6.2` conformance gate therefore has three parts:
 
 - KSI reference class scenarios for `kubernetes-apply`, `argo`, `flux`, and `oci`
   prove the public request/result contract.
@@ -310,7 +311,7 @@ A conformant substrate should pass tests that verify:
   state.
 
 The conformance suite is the enforcement mechanism for this spec. The first
-`0.6.0` reference classes are intentionally `kubernetes-apply`, `argo`, `flux`,
+`0.6.2` reference classes are intentionally `kubernetes-apply`, `argo`, `flux`,
 and `oci`: the first three cover direct apply and GitOps adoption, while OCI
 proves artifact-backed Gitless delivery without becoming a default dependency.
 The suite may start as an internal Go test contract; a public

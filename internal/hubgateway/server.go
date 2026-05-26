@@ -243,7 +243,7 @@ func (s *Server) createPromotion(w http.ResponseWriter, r *http.Request) {
 
 type CreatePromotionRequest struct {
 	Name      string                  `json:"name"`
-	FleetRef  string                  `json:"fleetRef"`
+	FleetRef  string                  `json:"fleet"`
 	Version   string                  `json:"version,omitempty"`
 	Versions  map[string]string       `json:"versions,omitempty"`
 	Plans     []kaprov1alpha1.PlanRef `json:"plans,omitempty"`
@@ -317,7 +317,7 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 
 func validateCreatePromotionRequest(req CreatePromotionRequest) error {
 	if req.Name == "" || req.FleetRef == "" {
-		return fmt.Errorf("name and fleetRef are required")
+		return fmt.Errorf("name and fleet are required")
 	}
 	if req.Version == "" && len(req.Versions) == 0 {
 		return fmt.Errorf("version or versions is required")
@@ -326,7 +326,7 @@ func validateCreatePromotionRequest(req CreatePromotionRequest) error {
 		return fmt.Errorf("name must be a DNS-1123 subdomain: %s", strings.Join(errs, "; "))
 	}
 	if errs := validation.IsDNS1123Subdomain(req.FleetRef); len(errs) > 0 {
-		return fmt.Errorf("fleetRef must be a DNS-1123 subdomain: %s", strings.Join(errs, "; "))
+		return fmt.Errorf("fleet must be a DNS-1123 subdomain: %s", strings.Join(errs, "; "))
 	}
 	if len(req.Plans) > 64 {
 		return fmt.Errorf("plans must contain at most 64 entries")

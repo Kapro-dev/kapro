@@ -146,10 +146,10 @@ type ClusterTemplateSpec struct {
 	// +optional
 	Interval string `json:"interval,omitempty"`
 
-	// Suspend pauses reconciliation. Existing imported Cluster objects are
+	// Suspended pauses reconciliation. Existing imported Cluster objects are
 	// left untouched.
 	// +optional
-	Suspend bool `json:"suspend,omitempty"`
+	Suspend bool `json:"suspended,omitempty"`
 
 	// Prune deletes imported Cluster objects whose source entry has
 	// disappeared. Default false (conservative) — operator opts into the

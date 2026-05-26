@@ -44,32 +44,32 @@ Kubernetes manifest a platform engineer already knows how to read.
 | Ecosystem pattern | Kapro rule |
 | --- | --- |
 | Kubernetes object references use a `*Ref`/`*Refs` field whose value is an object with at least `name`; broader references add `namespace`, `apiVersion`, `kind`, or resolver metadata. | Do not introduce new scalar `*Ref` fields. Either use an object reference (`pipelineRef.name`, `configRef.name`) or use a local domain noun (`unit`, `fleet`, `plan`). |
-| Gateway API separates class selection from implementation ownership through class resources and controller names. | Keep `SubstrateClass.spec.controllerName`, `Substrate.spec.classRef.name`, and typed `configRef`; delete the legacy `spec.substrate.kind/actuator` duplication in v0.7. |
+| Gateway API separates class selection from implementation ownership through class resources and controller names. | Keep `SubstrateClass.spec.controllerName`, `Substrate.spec.classRef.name`, and typed `configRef`; delete the legacy `spec.substrate.kind/actuator` duplication in v0.6.2. |
 | Flux, Tekton, Argo CD, and Crossplane keep integration-specific settings in source/pipeline/provider config objects instead of adding tool-specific fields to every workload. | Keep `Promotion` substrate-neutral. Tekton, webhook, Argo, Flux, and OCI settings live under `SubstrateClass` plus typed config CRDs. |
 | Kueue uses queue objects and selectors/cohorts without forcing every workload to carry a queue reference. | `PromotionQueue` should attach with selectors first; explicit `queueRef` can come later if real users need override-by-object. |
 | Kubernetes, Gateway API, Kueue, and NetworkPolicy make selectors full `LabelSelector` objects when users author policy. | New Kapro policy selectors should be `matchLabels`/`matchExpressions`, not bare `map[string]string`, except for documented legacy shorthands. |
-| Kubernetes and Flux use `spec.suspend`, while existing Kapro promotion objects mostly use `spec.suspended`. | Pick one spelling inside Kapro. Because `Promotion`, `Fleet`, `DeliveryUnit`, `Policy`, and triggers already use `suspended`, v0.7 should rename the remaining `suspend` fields to `suspended` and stop adding new `suspend` fields. |
+| Kubernetes and Flux use `spec.suspend`, while existing Kapro promotion objects mostly use `spec.suspended`. | Pick one spelling inside Kapro. Because `Promotion`, `Fleet`, `DeliveryUnit`, `Policy`, and triggers already use `suspended`, v0.6.2 renames the remaining public `suspend` fields to `suspended` and stops adding new `suspend` fields. |
 | Tekton and Argo CD use named parameter lists for user-authored bindings; StorageClass-style `parameters` maps are opaque extension bags. | Use named lists for field projections and user-visible mapping. Use `parameters` maps only when the selected substrate/plugin owns the schema. |
 | Kubernetes status uses `conditions`, `observedGeneration`, and bounded counts rather than spec echo fields that look authoritative. | Status may report observed refs and capability summaries, but stale copies of user spec must be removed or clearly marked as observations. |
 
 ## Naming Rectification
 
-These are deliberate `v0.7.x` breaking changes, not `v0.6.1` patch changes.
-`v0.6.1` should keep deprecated aliases accepted while generated examples move
-to the cleaner spelling.
+These are the deliberate `v0.6.2` public-preview breaking changes. They pull
+the major `v0.7.x` naming cleanup into the public relaunch so early adopters
+see one clean YAML contract instead of a deprecated alias layer.
 
-| Current | `v0.7.x` target | Reason |
+| Old shape | `v0.6.2` public shape | Reason |
 | --- | --- | --- |
 | `Substrate.spec.substrate.kind` | Delete; use `spec.classRef.name` | `classRef` already selects the capability class. |
 | `Substrate.spec.substrate.actuator` | Delete; use `spec.classRef.name` and controller-owned class status | Avoids encoding the same substrate twice. |
-| `Cluster.spec.substrate` | `Cluster.spec.delivery` | The field configures delivery behavior, not the `Substrate` object itself. |
+| `Cluster.spec.delivery` | `Cluster.spec.delivery` | The field configures delivery behavior, not the `Substrate` object itself. |
 | `Cluster.spec.suspend` | `Cluster.spec.suspended` | Matches `Fleet`, `Promotion`, `DeliveryUnit`, and policy state naming. |
 | `ClusterTemplate.spec.suspend` and `Source.spec.units[].suspend` | `suspended` | Removes the last public spelling split inside Kapro. |
 | `Substrate.spec.discovery.enabled` | `Substrate.spec.discovery.suspended` or omit the discovery block | Avoids opposite boolean polarity. |
 | Promotion, PromotionRun, and Trigger template bare string `deliveryUnitRef`, `fleetRef`, and `planRef` fields | `unit`, `fleet`, and `plan` | These are fixed Kapro action operands; reserve `*Ref` for object-shaped references. |
 | DeliveryUnit defaults and embedded trigger overrides: `defaultFleetRef`, `defaultPlanRef`, `triggers[].fleetRef`, `triggers[].planRef` | `defaultFleet`, `defaultPlan`, `triggers[].fleet`, `triggers[].plan` | Keeps the authoring object consistent with Promotion. |
 | Bare string `sourceRef` fields | Delete from first-use authoring; use `source` for local shorthand or `sourceRef.name` for retained object references | Reserve `*Ref` for typed object references. |
-| Top-level scalar `substrateRef` fields outside `spec.substrate` | `substrateRef.name` when retained | `spec.substrate.ref` stays compact because the parent already says "substrate"; top-level references should be object-shaped. |
+| Top-level scalar `substrateRef` fields | Domain noun such as `substrate`, or object refs when a broader reference is needed | `spec.delivery.ref` stays compact because the parent already says "delivery"; top-level references should not add scalar `*Ref` fields. |
 | Scalar `pluginRef` and `secretRef` fields | `pluginRef.name` and `secretRef.name`/typed Secret refs | Plugins and Secrets are Kubernetes objects, so users expect object-reference shape. |
 | Legacy map selectors on user-authored policy fields | Full `selector.matchLabels`/`matchExpressions` | Matches Kubernetes policy, Gateway, and Kueue shapes. |
 | `Promotion.spec.version` plus `spec.versions` | `defaultVersion` plus `versionOverrides`, or one versions map | Avoids singular/plural collision. |

@@ -19,7 +19,7 @@ spec:
   scope: Cluster
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .spec.substrateRef
+    - jsonPath: .spec.substrate
       name: Substrate
       type: string
     - jsonPath: .spec.expectedKind
@@ -68,8 +68,9 @@ spec:
               expectedKind:
                 description: |-
                   ExpectedKind optionally pins the referenced Substrate to a specific
-                  substrate.kind, for example argo or flux. When set and the referenced
-                  Substrate resolves to a different kind, the policy fails closed.
+                  SubstrateClass name, for example argo or flux. When set and the
+                  referenced Substrate resolves to a different kind, the policy fails
+                  closed.
                 maxLength: 63
                 pattern: ^[a-z][a-z0-9-]{0,62}$
                 type: string
@@ -122,9 +123,9 @@ spec:
                     type: object
                 type: object
                 x-kubernetes-map-type: atomic
-              substrateRef:
-                description: SubstrateRef names the Substrate profile this policy
-                  keeps in sync.
+              substrate:
+                description: Substrate names the Substrate profile this policy keeps
+                  in sync.
                 minLength: 1
                 type: string
               syncInterval:
@@ -133,7 +134,7 @@ spec:
                   to 5m.
                 type: string
             required:
-            - substrateRef
+            - substrate
             type: object
           status:
             description: SubstrateDiscoveryPolicyStatus records the latest continuous

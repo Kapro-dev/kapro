@@ -206,7 +206,7 @@ func importSubstrateObjects(opts importSubstrateOptions, substrateKind, manageme
 					Mode: kaprov1alpha1.ExecutionModeHubPush,
 				},
 				Discovery: &kaprov1alpha1.SubstrateDiscoverySpec{
-					Enabled:          true,
+					Suspended:        false,
 					ManagementPolicy: managementPolicy,
 					Selector:         &metav1.LabelSelector{MatchLabels: matchLabels},
 				},

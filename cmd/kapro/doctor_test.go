@@ -67,8 +67,8 @@ func TestDoctorReportFailsMissingPullSecret(t *testing.T) {
 		Spec: kaprov1alpha1.FleetSpec{
 			Registry: kaprov1alpha1.KaproRegistry{URL: "oci://registry.example.com/platform", SecretRef: "registry-auth"},
 			Substrate: kaprov1alpha1.SubstrateBindingSpec{
-				Mode:         kaprov1alpha1.SubstrateModePull,
-				SubstrateRef: "oci",
+				Mode: kaprov1alpha1.SubstrateModePull,
+				Ref:  "oci",
 			},
 			Clusters: []kaprov1alpha1.ClusterRef{{Name: "dev", Labels: map[string]string{"env": "dev"}}},
 			Plan: kaprov1alpha1.KaproPlan{Stages: []kaprov1alpha1.StageSpec{{
@@ -121,12 +121,12 @@ func TestDoctorReportSummarizesGitOpsSubstrates(t *testing.T) {
 	substrate := &kaprov1alpha1.Substrate{
 		ObjectMeta: metav1.ObjectMeta{Name: "flux"},
 		Spec: kaprov1alpha1.SubstrateSpec{
-			Substrate: &kaprov1alpha1.SubstrateImplementationSpec{Kind: "flux", Actuator: "flux"},
+			ClassRef:  &kaprov1alpha1.SubstrateClassReference{Name: "flux"},
 			Execution: &kaprov1alpha1.SubstrateExecutionSpec{Mode: kaprov1alpha1.ExecutionModeHubPush},
 			Parameters: map[string]string{
 				"namespace": "flux-system",
 			},
-			Discovery: &kaprov1alpha1.SubstrateDiscoverySpec{Enabled: true, ManagementPolicy: "Observe"},
+			Discovery: &kaprov1alpha1.SubstrateDiscoverySpec{Suspended: false, ManagementPolicy: "Observe"},
 		},
 	}
 	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "flux-system"}}
@@ -160,7 +160,7 @@ func TestDoctorReportUsesTypedConfigNamespace(t *testing.T) {
 			},
 			Execution:  &kaprov1alpha1.SubstrateExecutionSpec{Mode: kaprov1alpha1.ExecutionModeHubPush},
 			Parameters: map[string]string{"namespace": "wrong-namespace"},
-			Discovery:  &kaprov1alpha1.SubstrateDiscoverySpec{Enabled: true, ManagementPolicy: "Observe"},
+			Discovery:  &kaprov1alpha1.SubstrateDiscoverySpec{Suspended: false, ManagementPolicy: "Observe"},
 		},
 	}
 	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "flux-managed"}}
@@ -184,7 +184,7 @@ func TestDoctorReportWarnsOnMissingGitOpsNamespace(t *testing.T) {
 	substrate := &kaprov1alpha1.Substrate{
 		ObjectMeta: metav1.ObjectMeta{Name: "argo"},
 		Spec: kaprov1alpha1.SubstrateSpec{
-			Substrate: &kaprov1alpha1.SubstrateImplementationSpec{Kind: "argo", Actuator: "argo"},
+			ClassRef:  &kaprov1alpha1.SubstrateClassReference{Name: "argo"},
 			Execution: &kaprov1alpha1.SubstrateExecutionSpec{Mode: kaprov1alpha1.ExecutionModeHubPush},
 			Parameters: map[string]string{
 				"namespace": "argocd",

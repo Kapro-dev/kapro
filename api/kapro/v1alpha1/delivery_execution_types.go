@@ -248,10 +248,10 @@ type PromotionRunScope struct {
 type PromotionRunSpec struct {
 	// DeliveryUnitRef is the logical unit this execution attempt belongs to.
 	// +optional
-	DeliveryUnitRef string `json:"deliveryUnitRef,omitempty"`
+	DeliveryUnitRef string `json:"unit,omitempty"`
 	// FleetRef scopes target selection to the referenced Fleet's clusters.
 	// +optional
-	FleetRef string `json:"fleetRef,omitempty"`
+	FleetRef string `json:"fleet,omitempty"`
 	// Version is the default revision to deliver across the fleet.
 	// For existing substrate-native sources this is the revision for every unit that is
 	// not explicitly listed in versions.

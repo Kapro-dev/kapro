@@ -426,10 +426,10 @@ func normalizeRegistryHost(host string) string {
 func buildTriggeredPromotion(trigger *kaprov1alpha1.Trigger, artifact TriggerArtifactObservation, version, managedName, templateHash string, scheme *runtime.Scheme, now time.Time) (*kaprov1alpha1.Promotion, error) {
 	tmpl := &trigger.Spec.PromotionTemplate
 	if tmpl.DeliveryUnitRef == "" {
-		return nil, fmt.Errorf("spec.promotionTemplate.deliveryUnitRef is required")
+		return nil, fmt.Errorf("spec.promotionTemplate.unit is required")
 	}
 	if tmpl.FleetRef == "" {
-		return nil, fmt.Errorf("spec.promotionTemplate.fleetRef is required")
+		return nil, fmt.Errorf("spec.promotionTemplate.fleet is required")
 	}
 	labels := copyTriggerStringMap(tmpl.Labels)
 	labels[kaprov1alpha1.LabelUnit] = tmpl.DeliveryUnitRef
@@ -489,9 +489,9 @@ func applyTriggerToPromotion(existing, desired *kaprov1alpha1.Promotion) {
 func triggerTemplateHash(trigger *kaprov1alpha1.Trigger) string {
 	t := trigger.Spec.PromotionTemplate
 	buf, _ := json.Marshal(struct {
-		DeliveryUnitRef string                           `json:"deliveryUnitRef"`
-		FleetRef        string                           `json:"fleetRef"`
-		PlanRef         string                           `json:"planRef"`
+		DeliveryUnitRef string                           `json:"unit"`
+		FleetRef        string                           `json:"fleet"`
+		PlanRef         string                           `json:"plan"`
 		Plans           []kaprov1alpha1.PlanRef          `json:"plans"`
 		Suspended       bool                             `json:"suspended"`
 		Scope           *kaprov1alpha1.PromotionRunScope `json:"scope"`

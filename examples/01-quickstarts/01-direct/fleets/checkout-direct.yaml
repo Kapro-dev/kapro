@@ -6,7 +6,7 @@ metadata:
     kapro.io/unit: checkout-direct
     kapro.io/team: platform
 spec:
-  substrate:
+  delivery:
     mode: push
     ref: direct
     parameters:

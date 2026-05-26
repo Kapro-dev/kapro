@@ -14,8 +14,8 @@ spec:
       requireSignature: false
       pollInterval: 1m
   promotionTemplate:
-    deliveryUnitRef: checkout
-    fleetRef: checkout
+    unit: checkout
+    fleet: checkout
     nameTemplate: "checkout-kind"
     plans:
       - name: main

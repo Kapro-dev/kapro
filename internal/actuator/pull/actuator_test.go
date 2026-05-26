@@ -23,8 +23,8 @@ func TestApplyDeltaRecordsDesiredVersionsOnFleetCluster(t *testing.T) {
 		Spec: kaprov1alpha1.ClusterSpec{
 			DesiredVersions: map[string]string{"worker": "v1"},
 			Substrate: kaprov1alpha1.SubstrateBindingSpec{
-				Mode:         "pull",
-				SubstrateRef: "flux",
+				Mode: "pull",
+				Ref:  "flux",
 				Parameters: map[string]string{
 					"ociRepository": "cluster-a-bundle",
 				},

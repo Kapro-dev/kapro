@@ -140,8 +140,8 @@ spec:
       requireSignature: true
       pollInterval: 5m
   promotionTemplate:
-    deliveryUnitRef: checkout
-    fleetRef: checkout
+    unit: checkout
+    fleet: checkout
     plans:
       - name: production
         plan: checkout-keyless
@@ -181,8 +181,8 @@ spec:
       tagPattern: "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
       requireSignature: true
   promotionTemplate:
-    deliveryUnitRef: checkout
-    fleetRef: checkout
+    unit: checkout
+    fleet: checkout
     plans:
       - name: production
         plan: checkout

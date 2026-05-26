@@ -34,7 +34,7 @@ The `DeliveryUnit` owns source mapping intent; `Promotion` remains the explicit
 rollout action.
 Push the generated repo and replace the placeholder `repoURL` values before
 expecting Argo CD to sync. If your Argo Applications already exist with
-different names, set `spec.substrate.parameters.application` for one shared
+different names, set `spec.delivery.parameters.application` for one shared
 Application or `applicationSelector` for label selection.
 
 Kapro only writes Argo CD `Application` objects that explicitly opt in. The

@@ -52,7 +52,7 @@ func TestE2E_PromotionRun_Sync_Converged(t *testing.T) {
 		},
 		Spec: kaprov1alpha1.ClusterSpec{
 			Substrate: kaprov1alpha1.SubstrateBindingSpec{
-				Mode: "pull", SubstrateRef: "flux",
+				Mode: "pull", Ref: "flux",
 				Parameters: map[string]string{"namespace": "flux-system", "ociRepository": "test-repo"},
 			},
 		},
@@ -67,7 +67,7 @@ func TestE2E_PromotionRun_Sync_Converged(t *testing.T) {
 		},
 		Spec: kaprov1alpha1.ClusterSpec{
 			Substrate: kaprov1alpha1.SubstrateBindingSpec{
-				Mode: "pull", SubstrateRef: "flux",
+				Mode: "pull", Ref: "flux",
 				Parameters: map[string]string{"namespace": "flux-system", "ociRepository": "test-repo"},
 			},
 		},
@@ -178,7 +178,7 @@ func TestE2E_HaltPolicy_CancelsSiblingTarget(t *testing.T) {
 		},
 		Spec: kaprov1alpha1.ClusterSpec{
 			Substrate: kaprov1alpha1.SubstrateBindingSpec{
-				Mode: "pull", SubstrateRef: "flux",
+				Mode: "pull", Ref: "flux",
 				Parameters: map[string]string{"namespace": "flux-system", "ociRepository": "test-repo"},
 			},
 		},
@@ -190,7 +190,7 @@ func TestE2E_HaltPolicy_CancelsSiblingTarget(t *testing.T) {
 		},
 		Spec: kaprov1alpha1.ClusterSpec{
 			Substrate: kaprov1alpha1.SubstrateBindingSpec{
-				Mode: "pull", SubstrateRef: "flux",
+				Mode: "pull", Ref: "flux",
 				Parameters: map[string]string{"namespace": "flux-system", "ociRepository": "test-repo"},
 			},
 		},

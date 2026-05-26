@@ -2,9 +2,9 @@ package v1alpha1
 
 import "testing"
 
-func TestSubstrateSpecCanonicalOpenSubstrate(t *testing.T) {
+func TestSubstrateSpecCanonicalClassRef(t *testing.T) {
 	spec := SubstrateSpec{
-		Substrate: &SubstrateImplementationSpec{Kind: "hello-world", Actuator: "hello-world"},
+		ClassRef:  &SubstrateClassReference{Name: "hello-world"},
 		Execution: &SubstrateExecutionSpec{Mode: ExecutionModeHubPush},
 	}
 	if got := spec.SubstrateKind(); got != "hello-world" {
@@ -18,9 +18,9 @@ func TestSubstrateSpecCanonicalOpenSubstrate(t *testing.T) {
 	}
 }
 
-func TestSubstrateSpecLegacyFallback(t *testing.T) {
+func TestSubstrateSpecBuiltInClassRef(t *testing.T) {
 	spec := SubstrateSpec{
-		Substrate: &SubstrateImplementationSpec{Kind: "flux", Actuator: "flux"},
+		ClassRef:  &SubstrateClassReference{Name: "flux"},
 		Execution: &SubstrateExecutionSpec{Mode: ExecutionModeSpokePull},
 	}
 	if got := spec.SubstrateKind(); got != "flux" {

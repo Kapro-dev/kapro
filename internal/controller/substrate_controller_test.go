@@ -32,20 +32,21 @@ func TestSubstrateProfileReadinessBuiltIn(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "argo"},
 		Spec:       substrateTestSpec("argo", kaprov1alpha1.ExecutionModeHubPush, nil, nil),
 	}
+	class := acceptedSubstrateClass("argo", "kapro.io/argo", []kaprov1alpha1.ExecutionMode{kaprov1alpha1.ExecutionModeHubPush}, kaprov1alpha1.SubstrateObjectKindReference{})
 	r := &SubstrateReconciler{
-		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(profile).Build(),
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(profile, class).Build(),
 	}
 
 	ready, reason, _ := r.profileReadiness(context.Background(), profile)
 	if !ready {
 		t.Fatalf("ready=false reason=%s", reason)
 	}
-	if reason != "BuiltInSubstrateReady" {
+	if reason != "SubstrateClassSubstrateReady" {
 		t.Fatalf("reason=%s", reason)
 	}
 }
 
-func TestSubstrateProfileReadinessExternalRequiresReadyPlugin(t *testing.T) {
+func TestSubstrateProfileReadinessCustomClass(t *testing.T) {
 	scheme := runtime.NewScheme()
 	if err := clientgoscheme.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
@@ -55,31 +56,18 @@ func TestSubstrateProfileReadinessExternalRequiresReadyPlugin(t *testing.T) {
 	}
 	profile := &kaprov1alpha1.Substrate{
 		ObjectMeta: metav1.ObjectMeta{Name: "custom"},
-		Spec:       substrateTestSpec("external", kaprov1alpha1.ExecutionModeExternalPull, nil, nil),
+		Spec:       substrateTestSpec("custom", kaprov1alpha1.ExecutionModeExternalPull, nil, nil),
 	}
-	profile.Spec.PluginRef = "custom-substrate"
-	plugin := &kaprov1alpha1.Plugin{
-		ObjectMeta: metav1.ObjectMeta{Name: "custom-substrate", Generation: 2},
-		Spec: kaprov1alpha1.PluginSpec{
-			Type:     kaprov1alpha1.PluginTypeActuator,
-			Name:     "custom",
-			Protocol: kaprov1alpha1.PluginProtocolGRPC,
-			Endpoint: "dns:///custom-substrate:9090",
-		},
-		Status: kaprov1alpha1.PluginStatus{
-			ObservedGeneration: 2,
-			Ready:              true,
-		},
-	}
+	class := acceptedSubstrateClass("custom", "example.com/custom", []kaprov1alpha1.ExecutionMode{kaprov1alpha1.ExecutionModeExternalPull}, kaprov1alpha1.SubstrateObjectKindReference{})
 	r := &SubstrateReconciler{
-		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(profile, plugin).Build(),
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(profile, class).Build(),
 	}
 
 	ready, reason, _ := r.profileReadiness(context.Background(), profile)
 	if !ready {
 		t.Fatalf("ready=false reason=%s", reason)
 	}
-	if reason != "ExternalSubstrateReady" {
+	if reason != "SubstrateClassSubstrateReady" {
 		t.Fatalf("reason=%s", reason)
 	}
 }
@@ -222,7 +210,7 @@ func TestSubstrateProfilesForSubstrateObjectMatchesDiscoveryProfile(t *testing.T
 		ObjectMeta: metav1.ObjectMeta{Name: "argo"},
 		Spec: substrateTestSpec("argo", kaprov1alpha1.ExecutionModeHubPush,
 			&kaprov1alpha1.SubstrateDiscoverySpec{
-				Enabled: true,
+				Suspended: false,
 				Selector: &metav1.LabelSelector{
 					MatchLabels: map[string]string{"kapro.io/import": "true"},
 				},
@@ -233,7 +221,7 @@ func TestSubstrateProfilesForSubstrateObjectMatchesDiscoveryProfile(t *testing.T
 		ObjectMeta: metav1.ObjectMeta{Name: "flux"},
 		Spec: substrateTestSpec("flux", kaprov1alpha1.ExecutionModeSpokePull,
 			&kaprov1alpha1.SubstrateDiscoverySpec{
-				Enabled: true,
+				Suspended: false,
 			},
 			map[string]string{"namespace": "flux-system"}),
 	}
@@ -260,7 +248,7 @@ func TestSubstrateProfilesForSubstrateObjectMatchesArgoClusterSecret(t *testing.
 		ObjectMeta: metav1.ObjectMeta{Name: "argo"},
 		Spec: substrateTestSpec("argo", kaprov1alpha1.ExecutionModeHubPush,
 			&kaprov1alpha1.SubstrateDiscoverySpec{
-				Enabled: true,
+				Suspended: false,
 			},
 			map[string]string{"namespace": "argocd"}),
 	}
@@ -291,7 +279,7 @@ func TestSubstrateProfileArgoDiscoveryCountsExistingResources(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "argo"},
 		Spec: substrateTestSpec("argo", kaprov1alpha1.ExecutionModeHubPush,
 			&kaprov1alpha1.SubstrateDiscoverySpec{
-				Enabled: true,
+				Suspended: false,
 			},
 			map[string]string{"namespace": "argocd"}),
 	}
@@ -341,7 +329,7 @@ func TestSubstrateProfileDiscoveryUsesTypedConfigNamespace(t *testing.T) {
 				Kind:       "FluxSubstrateConfig",
 				Name:       "checkout",
 			},
-			Discovery:  &kaprov1alpha1.SubstrateDiscoverySpec{Enabled: true},
+			Discovery:  &kaprov1alpha1.SubstrateDiscoverySpec{Suspended: false},
 			Parameters: map[string]string{"namespace": "wrong-namespace"},
 		},
 	}
@@ -378,7 +366,7 @@ func TestSubstrateProfileObjectWatchUsesTypedConfigNamespace(t *testing.T) {
 				Kind:       "FluxSubstrateConfig",
 				Name:       "checkout",
 			},
-			Discovery:  &kaprov1alpha1.SubstrateDiscoverySpec{Enabled: true},
+			Discovery:  &kaprov1alpha1.SubstrateDiscoverySpec{Suspended: false},
 			Parameters: map[string]string{"namespace": "wrong-namespace"},
 		},
 	}
@@ -409,7 +397,7 @@ func TestSubstrateProfileArgoDiscoveryClassifiesExistingGitOpsPatterns(t *testin
 		ObjectMeta: metav1.ObjectMeta{Name: "argo"},
 		Spec: substrateTestSpec("argo", kaprov1alpha1.ExecutionModeHubPush,
 			&kaprov1alpha1.SubstrateDiscoverySpec{
-				Enabled: true,
+				Suspended: false,
 				Selector: &metav1.LabelSelector{MatchLabels: map[string]string{
 					"kapro.io/import": "true",
 				}},
@@ -470,7 +458,7 @@ func TestSubstrateProfileDiscoveryStatusSamplesAreBounded(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "argo"},
 		Spec: substrateTestSpec("argo", kaprov1alpha1.ExecutionModeHubPush,
 			&kaprov1alpha1.SubstrateDiscoverySpec{
-				Enabled: true,
+				Suspended: false,
 			},
 			map[string]string{"namespace": "argocd"}),
 	}
@@ -509,7 +497,7 @@ func TestSubstrateProfileDiscoveryFailsClosedWhenMaxObjectsExceeded(t *testing.T
 		ObjectMeta: metav1.ObjectMeta{Name: "argo"},
 		Spec: substrateTestSpec("argo", kaprov1alpha1.ExecutionModeHubPush,
 			&kaprov1alpha1.SubstrateDiscoverySpec{
-				Enabled:    true,
+				Suspended:  false,
 				MaxObjects: 1,
 			},
 			map[string]string{"namespace": "argocd"}),
@@ -540,7 +528,7 @@ func TestSubstrateProfileFluxDiscoveryCountsExistingResources(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "flux"},
 		Spec: substrateTestSpec("flux", kaprov1alpha1.ExecutionModeSpokePull,
 			&kaprov1alpha1.SubstrateDiscoverySpec{
-				Enabled: true,
+				Suspended: false,
 			},
 			map[string]string{"namespace": "flux-system"}),
 	}
@@ -615,7 +603,7 @@ func newApplicationSet(namespace, name string, labels map[string]string) *unstru
 
 func substrateTestSpec(kind string, mode kaprov1alpha1.ExecutionMode, discovery *kaprov1alpha1.SubstrateDiscoverySpec, parameters map[string]string) kaprov1alpha1.SubstrateSpec {
 	return kaprov1alpha1.SubstrateSpec{
-		Substrate:  &kaprov1alpha1.SubstrateImplementationSpec{Kind: kind, Actuator: kind},
+		ClassRef:   &kaprov1alpha1.SubstrateClassReference{Name: kind},
 		Execution:  &kaprov1alpha1.SubstrateExecutionSpec{Mode: mode},
 		Discovery:  discovery,
 		Parameters: parameters,
@@ -623,17 +611,19 @@ func substrateTestSpec(kind string, mode kaprov1alpha1.ExecutionMode, discovery 
 }
 
 func acceptedSubstrateClass(name, controllerName string, modes []kaprov1alpha1.ExecutionMode, configKind kaprov1alpha1.SubstrateObjectKindReference) *kaprov1alpha1.SubstrateClass {
+	configKinds := []kaprov1alpha1.SubstrateObjectKindReference(nil)
+	if configKind.APIVersion != "" || configKind.Kind != "" {
+		configKinds = []kaprov1alpha1.SubstrateObjectKindReference{configKind}
+	}
 	class := &kaprov1alpha1.SubstrateClass{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Generation: 1},
 		Spec: kaprov1alpha1.SubstrateClassSpec{
 			ControllerName: controllerName,
 		},
 		Status: kaprov1alpha1.SubstrateClassStatus{
-			ObservedGeneration: 1,
-			ExecutionModes:     &kaprov1alpha1.SubstrateClassExecutionModesStatus{Supported: modes},
-			AcceptedConfigKinds: []kaprov1alpha1.SubstrateObjectKindReference{
-				configKind,
-			},
+			ObservedGeneration:  1,
+			ExecutionModes:      &kaprov1alpha1.SubstrateClassExecutionModesStatus{Supported: modes},
+			AcceptedConfigKinds: configKinds,
 			Conditions: []metav1.Condition{{
 				Type:               "Accepted",
 				Status:             metav1.ConditionTrue,

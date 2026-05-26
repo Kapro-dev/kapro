@@ -110,12 +110,20 @@ func TestRemovedPreviewCRDsDoNotShip(t *testing.T) {
 
 func TestSubstrateCRDUsesPublicNaming(t *testing.T) {
 	root := repoRoot(t)
-	data := readFile(t, filepath.Join(root, "config", "crd", "bases", "kapro.io_substrates.yaml"))
+	path := filepath.Join(root, "config", "crd", "bases", "kapro.io_substrates.yaml")
+	data := readFile(t, path)
 	text := string(data)
-	for _, want := range []string{"name: substrates.kapro.io", "kind: Substrate", "singular: substrate", "spec.substrate.ref"} {
+	for _, want := range []string{"name: substrates.kapro.io", "kind: Substrate", "singular: substrate", "spec.delivery.ref"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("kapro.io_substrates.yaml missing %q", want)
 		}
+	}
+	props := crdSpecProperties(t, path)
+	if _, ok := props["classRef"]; !ok {
+		t.Fatalf("kapro.io_substrates.yaml missing spec.classRef")
+	}
+	if _, ok := props["substrate"]; ok {
+		t.Fatalf("kapro.io_substrates.yaml still exposes spec.substrate")
 	}
 	for _, stale := range []string{"name: backends.kapro.io", "kind: Backend", "backendRef"} {
 		if strings.Contains(text, stale) {
@@ -128,11 +136,11 @@ func TestFleetAndClusterUseSubstrateBindingInSpec(t *testing.T) {
 	root := repoRoot(t)
 	for _, file := range []string{"kapro.io_fleets.yaml", "kapro.io_clusters.yaml"} {
 		props := crdSpecProperties(t, filepath.Join(root, "config", "crd", "bases", file))
-		if _, ok := props["substrate"]; !ok {
-			t.Fatalf("%s missing spec.substrate", file)
+		if _, ok := props["delivery"]; !ok {
+			t.Fatalf("%s missing spec.delivery", file)
 		}
-		if _, ok := props["delivery"]; ok {
-			t.Fatalf("%s still exposes spec.delivery in the authored schema", file)
+		if _, ok := props["substrate"]; ok {
+			t.Fatalf("%s still exposes spec.substrate in the authored schema", file)
 		}
 	}
 }

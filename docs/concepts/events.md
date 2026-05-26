@@ -38,7 +38,7 @@ transitions.
   "datacontenttype": "application/json",
   "data": {
     "promotion": "checkout",
-    "fleetRef": "checkout-fleet",
+    "fleet": "checkout-fleet",
     "phase": "Progressing",
     "version": "v1.2.3",
     "attemptName": "checkout-att-1",
@@ -81,7 +81,7 @@ transitions.
 |---|---|
 | `promotion` | `Promotion.metadata.name`. |
 | `promotionUID` | Kubernetes UID for traceability. |
-| `fleetRef` | Parent `Fleet` name. |
+| `fleet` | Parent `Fleet` name. |
 | `phase` | Promotion phase for whole-Promotion and attempt events; PromotionRun phase for wave, stage, gate, and target events. |
 | `previousPhase` | Prior phase for transition events. |
 | `version` | Requested artifact version. |

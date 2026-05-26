@@ -55,8 +55,8 @@ func newDeliveryFC(name string, desired map[string]string, suspend bool, substra
 	fc.Spec.DesiredVersions = desired
 	fc.Spec.Suspend = suspend
 	fc.Spec.Substrate = kaprov1alpha1.SubstrateBindingSpec{
-		Mode:         kaprov1alpha1.SubstrateModePull,
-		SubstrateRef: substrate,
+		Mode: kaprov1alpha1.SubstrateModePull,
+		Ref:  substrate,
 	}
 	return fc
 }
@@ -64,7 +64,7 @@ func newDeliveryFC(name string, desired map[string]string, suspend bool, substra
 func newDeliveryBP(name string, driver kaprov1alpha1.SubstrateKind) *kaprov1alpha1.Substrate {
 	bp := &kaprov1alpha1.Substrate{}
 	bp.Name = name
-	bp.Spec.Substrate = &kaprov1alpha1.SubstrateImplementationSpec{Kind: string(driver), Actuator: string(driver)}
+	bp.Spec.ClassRef = &kaprov1alpha1.SubstrateClassReference{Name: string(driver)}
 	bp.Spec.Execution = &kaprov1alpha1.SubstrateExecutionSpec{Mode: kaprov1alpha1.ExecutionModeSpokePull}
 	return bp
 }

@@ -7,10 +7,10 @@ metadata:
     kapro.io/team: platform
     app.kubernetes.io/name: checkout
 spec:
-  defaultFleetRef: checkout-oci
-  defaultPlanRef: checkout-oci
+  defaultFleet: checkout-oci
+  defaultPlan: checkout-oci
   source:
-    substrateRef: oci
+    substrate: oci
     registries:
       - name: app
         url: oci://ghcr.io/example/charts

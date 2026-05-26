@@ -14,8 +14,8 @@ spec:
       requireSignature: true
       pollInterval: 5m
   promotionTemplate:
-    deliveryUnitRef: checkout
-    fleetRef: checkout
+    unit: checkout
+    fleet: checkout
     plans:
       - name: production
         plan: checkout-production

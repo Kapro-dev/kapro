@@ -23,7 +23,7 @@ func TestNewPromotionSnapshotDeepCopiesInputs(t *testing.T) {
 	substrates := []kaprov1alpha1.Substrate{{
 		ObjectMeta: metav1.ObjectMeta{Name: "flux"},
 		Spec: kaprov1alpha1.SubstrateSpec{
-			Substrate: &kaprov1alpha1.SubstrateImplementationSpec{Kind: "flux", Actuator: "flux"},
+			ClassRef:  &kaprov1alpha1.SubstrateClassReference{Name: "flux"},
 			Execution: &kaprov1alpha1.SubstrateExecutionSpec{Mode: kaprov1alpha1.ExecutionModeSpokePull},
 		},
 	}}
@@ -37,7 +37,7 @@ func TestNewPromotionSnapshotDeepCopiesInputs(t *testing.T) {
 	run.Name = "mutated"
 	targets[0].Labels["tier"] = "dev"
 	clusters[0].Labels["region"] = "us"
-	substrates[0].Spec.Substrate.Kind = "argo"
+	substrates[0].Spec.ClassRef.Name = "argo"
 	classes[0].Labels["owner"] = "mutated"
 
 	if snap.Promotion.Name != "checkout" || snap.Run.Name != "checkout-1" {
@@ -49,7 +49,7 @@ func TestNewPromotionSnapshotDeepCopiesInputs(t *testing.T) {
 	if snap.Clusters[0].Labels["region"] != "eu" {
 		t.Fatalf("cluster labels were not copied: %#v", snap.Clusters[0].Labels)
 	}
-	if snap.Substrates[0].Spec.Substrate.Kind != "flux" {
+	if snap.Substrates[0].Spec.ClassRef.Name != "flux" {
 		t.Fatalf("substrate spec was not copied: %#v", snap.Substrates[0].Spec)
 	}
 	if snap.SubstrateClasses[0].Labels["owner"] != "platform" {

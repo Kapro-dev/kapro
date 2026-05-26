@@ -7,7 +7,7 @@ metadata:
     kapro.io/team: tutorial
 spec:
   source:
-    substrateRef: flux
+    substrate: flux
     units:
       - name: web
         chartName: hello-world

@@ -6,8 +6,8 @@ metadata:
     kapro.io/unit: checkout-direct
     kapro.io/team: platform
 spec:
-  deliveryUnitRef: checkout-direct
-  fleetRef: checkout-direct
-  planRef: checkout-direct
+  unit: checkout-direct
+  fleet: checkout-direct
+  plan: checkout-direct
   version: ghcr.io/example/checkout-direct:0.1.0
   timeout: 30m

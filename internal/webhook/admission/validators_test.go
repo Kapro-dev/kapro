@@ -37,7 +37,7 @@ func TestValidateFleetCluster_MissingMode(t *testing.T) {
 func TestValidateFleetCluster_MissingSubstrate(t *testing.T) {
 	mc := &kaprov1alpha1.Cluster{
 		Spec: kaprov1alpha1.ClusterSpec{
-			Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: "pull", SubstrateRef: ""},
+			Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: "pull", Ref: ""},
 		},
 	}
 	if err := mcValidate(mc); err == nil {

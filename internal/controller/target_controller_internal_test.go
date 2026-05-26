@@ -102,8 +102,8 @@ func TestHandleApplyingSkipsConvergenceWhenObserveUnsupported(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
 		Spec: kaprov1alpha1.ClusterSpec{
 			Substrate: kaprov1alpha1.SubstrateBindingSpec{
-				Mode:         kaprov1alpha1.SubstrateModePull,
-				SubstrateRef: "flux",
+				Mode: kaprov1alpha1.SubstrateModePull,
+				Ref:  "flux",
 			},
 		},
 		Status: kaprov1alpha1.ClusterStatus{
@@ -118,7 +118,7 @@ func TestHandleApplyingSkipsConvergenceWhenObserveUnsupported(t *testing.T) {
 	substrate := &kaprov1alpha1.Substrate{
 		ObjectMeta: metav1.ObjectMeta{Name: "flux"},
 		Spec: kaprov1alpha1.SubstrateSpec{
-			Substrate: &kaprov1alpha1.SubstrateImplementationSpec{Kind: "flux", Actuator: "flux"},
+			ClassRef:  &kaprov1alpha1.SubstrateClassReference{Name: "flux"},
 			Execution: &kaprov1alpha1.SubstrateExecutionSpec{Mode: kaprov1alpha1.ExecutionModeSpokePull},
 		},
 		Status: kaprov1alpha1.SubstrateStatus{Ready: true},
@@ -189,8 +189,8 @@ func TestHandleApplyingResolvesClassRefSubstrateToBuiltInActuator(t *testing.T) 
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
 		Spec: kaprov1alpha1.ClusterSpec{
 			Substrate: kaprov1alpha1.SubstrateBindingSpec{
-				Mode:         kaprov1alpha1.SubstrateModePush,
-				SubstrateRef: "local-direct",
+				Mode: kaprov1alpha1.SubstrateModePush,
+				Ref:  "local-direct",
 			},
 		},
 		Status: kaprov1alpha1.ClusterStatus{CurrentVersions: map[string]string{"api": "old"}},
@@ -275,8 +275,8 @@ func TestHandleApplyingWaitsForNotReadySubstrate(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
 		Spec: kaprov1alpha1.ClusterSpec{
 			Substrate: kaprov1alpha1.SubstrateBindingSpec{
-				Mode:         kaprov1alpha1.SubstrateModePush,
-				SubstrateRef: "local-direct",
+				Mode: kaprov1alpha1.SubstrateModePush,
+				Ref:  "local-direct",
 			},
 		},
 		Status: kaprov1alpha1.ClusterStatus{CurrentVersions: map[string]string{"api": "old"}},
@@ -362,8 +362,8 @@ func TestHandleApplyingWaitsForStaleSubstrateReadiness(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
 		Spec: kaprov1alpha1.ClusterSpec{
 			Substrate: kaprov1alpha1.SubstrateBindingSpec{
-				Mode:         kaprov1alpha1.SubstrateModePush,
-				SubstrateRef: "local-direct",
+				Mode: kaprov1alpha1.SubstrateModePush,
+				Ref:  "local-direct",
 			},
 		},
 		Status: kaprov1alpha1.ClusterStatus{CurrentVersions: map[string]string{"api": "old"}},
@@ -596,8 +596,8 @@ func TestPromotionTargetReconcilePullOCIRecordsDesiredState(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
 		Spec: kaprov1alpha1.ClusterSpec{
 			Substrate: kaprov1alpha1.SubstrateBindingSpec{
-				Mode:         kaprov1alpha1.SubstrateModePull,
-				SubstrateRef: "oci",
+				Mode: kaprov1alpha1.SubstrateModePull,
+				Ref:  "oci",
 			},
 		},
 		Status: kaprov1alpha1.ClusterStatus{
@@ -613,7 +613,7 @@ func TestPromotionTargetReconcilePullOCIRecordsDesiredState(t *testing.T) {
 	substrate := &kaprov1alpha1.Substrate{
 		ObjectMeta: metav1.ObjectMeta{Name: "oci"},
 		Spec: kaprov1alpha1.SubstrateSpec{
-			Substrate: &kaprov1alpha1.SubstrateImplementationSpec{Kind: "oci", Actuator: "oci"},
+			ClassRef:  &kaprov1alpha1.SubstrateClassReference{Name: "oci"},
 			Execution: &kaprov1alpha1.SubstrateExecutionSpec{Mode: kaprov1alpha1.ExecutionModeSpokePull},
 		},
 		Status: kaprov1alpha1.SubstrateStatus{Ready: true},

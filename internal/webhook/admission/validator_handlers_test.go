@@ -96,8 +96,8 @@ func TestPromotionTriggerValidatorHandleDeniesMissingDeliveryUnitRef(t *testing.
 	trigger.Spec.PromotionTemplate.DeliveryUnitRef = ""
 
 	resp := validator.Handle(context.Background(), admissionRequest(t, admissionv1.Create, trigger))
-	if resp.Allowed || !strings.Contains(responseMessage(resp), "spec.promotionTemplate.deliveryUnitRef") {
-		t.Fatalf("expected missing deliveryUnitRef denial, allowed=%t message=%q", resp.Allowed, responseMessage(resp))
+	if resp.Allowed || !strings.Contains(responseMessage(resp), "spec.promotionTemplate.unit") {
+		t.Fatalf("expected missing unit denial, allowed=%t message=%q", resp.Allowed, responseMessage(resp))
 	}
 }
 
@@ -226,7 +226,7 @@ func TestDeliveryUnitValidatorHandleDeniesTriggerWithoutFleetDefault(t *testing.
 	unit.Spec.Triggers[0].FleetRef = ""
 
 	resp := validator.Handle(context.Background(), admissionRequest(t, admissionv1.Create, unit))
-	if resp.Allowed || !strings.Contains(responseMessage(resp), "requires fleetRef or spec.defaultFleetRef") {
+	if resp.Allowed || !strings.Contains(responseMessage(resp), "requires fleet or spec.defaultFleet") {
 		t.Fatalf("expected missing trigger fleet denial, allowed=%t message=%q", resp.Allowed, responseMessage(resp))
 	}
 }

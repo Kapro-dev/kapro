@@ -3658,11 +3658,6 @@ func (in *SubstrateSpec) DeepCopyInto(out *SubstrateSpec) {
 		*out = new(SubstrateObjectReference)
 		**out = **in
 	}
-	if in.Substrate != nil {
-		in, out := &in.Substrate, &out.Substrate
-		*out = new(SubstrateImplementationSpec)
-		**out = **in
-	}
 	if in.Execution != nil {
 		in, out := &in.Execution, &out.Execution
 		*out = new(SubstrateExecutionSpec)

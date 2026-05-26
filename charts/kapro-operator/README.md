@@ -18,7 +18,7 @@ Release:
 
 ```bash
 helm upgrade --install kapro \
-  https://github.com/Kapro-dev/kapro/releases/download/v0.6.0/kapro-operator-0.6.0.tgz \
+  https://github.com/Kapro-dev/kapro/releases/download/v0.6.2/kapro-operator-0.6.2.tgz \
   --namespace kapro-system \
   --create-namespace
 ```
@@ -32,7 +32,7 @@ operator policy:
 
 ```bash
 helm upgrade --install kapro \
-  https://github.com/Kapro-dev/kapro/releases/download/v0.6.0/kapro-operator-0.6.0.tgz \
+  https://github.com/Kapro-dev/kapro/releases/download/v0.6.2/kapro-operator-0.6.2.tgz \
   --namespace kapro-system \
   --create-namespace \
   --set networkPolicy.enabled=true
@@ -52,7 +52,7 @@ from older alpha manifests.
 For a same-line chart upgrade after CRDs are current:
 
 ```bash
-KAPRO_VERSION=0.6.0
+KAPRO_VERSION=0.6.2
 KAPRO_CHART="https://github.com/Kapro-dev/kapro/releases/download/v${KAPRO_VERSION}/kapro-operator-${KAPRO_VERSION}.tgz"
 
 helm upgrade kapro "${KAPRO_CHART}" \
@@ -64,7 +64,7 @@ CRDs in `crds/` are installed on first install. Helm does not upgrade CRDs
 automatically, so apply CRDs explicitly before upgrading the Helm release:
 
 ```bash
-KAPRO_VERSION=0.6.0
+KAPRO_VERSION=0.6.2
 KAPRO_CHART="https://github.com/Kapro-dev/kapro/releases/download/v${KAPRO_VERSION}/kapro-operator-${KAPRO_VERSION}.tgz"
 tmpdir="$(mktemp -d)"
 
@@ -109,7 +109,7 @@ install demo plugins. To opt in:
 
 ```bash
 helm upgrade --install kapro \
-  https://github.com/Kapro-dev/kapro/releases/download/v0.6.0/kapro-operator-0.6.0.tgz \
+  https://github.com/Kapro-dev/kapro/releases/download/v0.6.2/kapro-operator-0.6.2.tgz \
   --namespace kapro-system \
   --create-namespace \
   --set pluginGateway.enabled=true \

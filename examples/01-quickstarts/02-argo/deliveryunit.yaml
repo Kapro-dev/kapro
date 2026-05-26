@@ -7,10 +7,10 @@ metadata:
     kapro.io/team: platform
     app.kubernetes.io/name: checkout
 spec:
-  defaultFleetRef: checkout-argo
-  defaultPlanRef: checkout-argo
+  defaultFleet: checkout-argo
+  defaultPlan: checkout-argo
   source:
-    substrateRef: argo
+    substrate: argo
     units:
       - name: checkout
         substrateKind: Application

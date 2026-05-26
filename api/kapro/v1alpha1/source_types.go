@@ -16,11 +16,11 @@ import (
 // The public-preview authoring path embeds this in DeliveryUnit.spec.source;
 // Fleet.spec.source and Fleet.spec.sourceRef remain compatibility inputs.
 type SourceSpec struct {
-	// SubstrateRef is the Substrate this source is normally discovered from
-	// or packaged for. Fleet uses it as metadata; delivery still comes from
-	// Fleet.spec.substrate and Cluster.spec.substrate.
+	// Substrate is the Substrate this source is normally discovered from or
+	// packaged for. Fleet uses it as metadata; delivery still comes from
+	// Fleet.spec.delivery and Cluster.spec.delivery.
 	// +optional
-	SubstrateRef string `json:"substrateRef,omitempty"`
+	SubstrateRef string `json:"substrate,omitempty"`
 	// Registries defines HelmRepository sources for generated Flux resources.
 	// +optional
 	Registries []SourceRegistry `json:"registries,omitempty"`
@@ -157,9 +157,9 @@ type Unit struct {
 	// +kubebuilder:validation:Enum=Skip;Create;CreateReplace
 	// +optional
 	CRDs string `json:"crds,omitempty"`
-	// Suspend pauses reconciliation for this unit.
+	// Suspended pauses reconciliation for this unit.
 	// +optional
-	Suspend bool `json:"suspend,omitempty"`
+	Suspend bool `json:"suspended,omitempty"`
 }
 
 // ValuesReference references a ConfigMap or Secret for Helm values.

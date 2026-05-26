@@ -11,18 +11,18 @@ import (
 // through a Fleet. DeliveryUnit owns source/default intent, Fleet owns target
 // clusters and delivery defaults, and Plan owns rollout strategy.
 type PromotionSpec struct {
-	// DeliveryUnitRef is the logical app/workload being promoted. Promotion is
-	// the explicit action boundary; changing DeliveryUnit source/defaults does
-	// not deploy by itself.
+	// Unit is the logical app/workload being promoted. Promotion is the
+	// explicit action boundary; changing DeliveryUnit source/defaults does not
+	// deploy by itself.
 	// +kubebuilder:validation:MinLength=1
-	DeliveryUnitRef string `json:"deliveryUnitRef"`
-	// FleetRef is the name of the Fleet this intent targets.
+	DeliveryUnitRef string `json:"unit"`
+	// Fleet is the name of the Fleet this intent targets.
 	// +kubebuilder:validation:MinLength=1
-	FleetRef string `json:"fleetRef"`
-	// PlanRef is the primary Plan for this action. When unset, the controller
-	// uses DeliveryUnit.spec.defaultPlanRef, then any explicit Plans entries.
+	FleetRef string `json:"fleet"`
+	// Plan is the primary Plan for this action. When unset, the controller
+	// uses DeliveryUnit.spec.defaultPlan, then any explicit Plans entries.
 	// +optional
-	PlanRef string `json:"planRef,omitempty"`
+	PlanRef string `json:"plan,omitempty"`
 	// Version is the default revision to deliver across all units.
 	// +optional
 	Version string `json:"version,omitempty"`
@@ -31,7 +31,7 @@ type PromotionSpec struct {
 	// +optional
 	Versions map[string]string `json:"versions,omitempty"`
 	// Plans optionally defines the plan DAG for this action. When unset, the
-	// controller uses PlanRef, DeliveryUnit.spec.defaultPlanRef, or legacy
+	// controller uses Plan, DeliveryUnit.spec.defaultPlan, or legacy
 	// Fleet.spec.plan compatibility in that order.
 	// +kubebuilder:validation:MaxItems=64
 	// +optional
@@ -322,7 +322,7 @@ const (
 // +kubebuilder:storageversion
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster,shortName=promo,categories=kapro-all
-// +kubebuilder:printcolumn:name="Fleet",type=string,JSONPath=`.spec.fleetRef`
+// +kubebuilder:printcolumn:name="Fleet",type=string,JSONPath=`.spec.fleet`
 // +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.spec.version`
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="Run",type=string,JSONPath=`.status.activeAttemptRef.name`

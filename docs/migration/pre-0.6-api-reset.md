@@ -32,7 +32,7 @@ controller from user-authored intent.
 | `apiVersion: kapro.io/v1alpha2` | `apiVersion: kapro.io/v1alpha1` for desired state |
 | controller-owned objects in `kapro.io/v1alpha2` | `apiVersion: runtime.kapro.io/v1alpha1`; do not commit these to Git |
 | `Backend` | `Substrate` |
-| `spec.delivery.backendRef` | `spec.substrate.ref` |
+| `spec.delivery.backendRef` | `spec.delivery.ref` |
 | `backendKind` | `substrateKind` |
 | `argo-cd` driver/profile name | `argo` |
 | `PromotionRun`, `Target`, `DecisionTrace` in `kapro.io` | runtime objects in `runtime.kapro.io` |

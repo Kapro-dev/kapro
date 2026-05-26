@@ -8,7 +8,7 @@ import (
 	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
-func TestMigrateSubstrateObjectUsesOpenSubstrateShape(t *testing.T) {
+func TestMigrateSubstrateObjectUsesClassRefShape(t *testing.T) {
 	in := &kaprov1alpha1.Substrate{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        "argo-prod",
@@ -16,13 +16,13 @@ func TestMigrateSubstrateObjectUsesOpenSubstrateShape(t *testing.T) {
 			Annotations: map[string]string{"note": "keep"},
 		},
 		Spec: kaprov1alpha1.SubstrateSpec{
-			Substrate: &kaprov1alpha1.SubstrateImplementationSpec{Kind: "argo", Actuator: "argo"},
+			ClassRef:  &kaprov1alpha1.SubstrateClassReference{Name: "argo"},
 			Execution: &kaprov1alpha1.SubstrateExecutionSpec{Mode: kaprov1alpha1.ExecutionModeHubPush},
 		},
 	}
 	out := migrateSubstrateObject(in)
-	if out.Spec.Substrate == nil || out.Spec.Substrate.Kind != "argo" || out.Spec.Substrate.Actuator != "argo" {
-		t.Fatalf("substrate = %#v", out.Spec.Substrate)
+	if out.Spec.ClassRef == nil || out.Spec.ClassRef.Name != "argo" {
+		t.Fatalf("classRef = %#v", out.Spec.ClassRef)
 	}
 	if out.Spec.Execution == nil || out.Spec.Execution.Mode != kaprov1alpha1.ExecutionModeHubPush {
 		t.Fatalf("execution = %#v", out.Spec.Execution)

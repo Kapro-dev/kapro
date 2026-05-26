@@ -33,7 +33,7 @@ Environment for cluster mode:
   KAPRO_VERIFY_CLEANUP       Uninstall the Helm release and namespace after verification (default: false)
 
 Environment for release-render and release-cluster modes:
-  KAPRO_RELEASE_VERSION       Release tag to verify (default: v0.6.0)
+  KAPRO_RELEASE_VERSION       Release tag to verify (default: v0.6.2)
   KAPRO_RELEASE_CHART_URL     Optional chart package URL override
   KAPRO_PREVIOUS_RELEASE_VERSION Previous release tag for supported upgrade/rollback modes (default: current release tag)
   KAPRO_PREVIOUS_RELEASE_CHART_URL Optional previous chart package URL override
@@ -150,7 +150,7 @@ download_chart_version() {
 }
 
 download_release_chart() {
-  download_chart_version "${KAPRO_RELEASE_VERSION:-v0.6.0}" "${KAPRO_RELEASE_CHART_URL:-}"
+  download_chart_version "${KAPRO_RELEASE_VERSION:-v0.6.2}" "${KAPRO_RELEASE_CHART_URL:-}"
 }
 
 release_render() (
@@ -292,7 +292,7 @@ cluster() {
 
 release_cluster() (
   local version chart_package
-  version="${KAPRO_RELEASE_VERSION:-v0.6.0}"
+  version="${KAPRO_RELEASE_VERSION:-v0.6.2}"
   chart_package="$(download_release_chart)" || exit 1
   trap 'rm -rf "$(dirname "${chart_package}")"' EXIT
   KAPRO_IMAGE_TAG="${KAPRO_IMAGE_TAG:-${version}}" install_chart "${chart_package}"
@@ -300,7 +300,7 @@ release_cluster() (
 
 release_upgrade_cluster() (
   local current previous current_chart previous_chart cleanup previous_defaults previous_expected_crds previous_auth_can_i previous_webhooks
-  current="${KAPRO_RELEASE_VERSION:-v0.6.0}"
+  current="${KAPRO_RELEASE_VERSION:-v0.6.2}"
   previous="${KAPRO_PREVIOUS_RELEASE_VERSION:-${current}}"
   cleanup="${KAPRO_VERIFY_CLEANUP:-false}"
   previous_defaults="$(previous_release_verify_defaults "${previous}" "${current}")"
@@ -330,7 +330,7 @@ release_upgrade_cluster() (
 
 release_rollback_cluster() (
   local current previous current_chart previous_chart cleanup namespace release previous_defaults previous_expected_crds previous_auth_can_i previous_webhooks
-  current="${KAPRO_RELEASE_VERSION:-v0.6.0}"
+  current="${KAPRO_RELEASE_VERSION:-v0.6.2}"
   previous="${KAPRO_PREVIOUS_RELEASE_VERSION:-${current}}"
   cleanup="${KAPRO_VERIFY_CLEANUP:-false}"
   namespace="${KAPRO_VERIFY_NAMESPACE:-kapro-system}"

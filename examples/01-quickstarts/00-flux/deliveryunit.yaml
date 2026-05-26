@@ -7,10 +7,10 @@ metadata:
     kapro.io/team: platform
     app.kubernetes.io/name: checkout
 spec:
-  defaultFleetRef: checkout
-  defaultPlanRef: checkout
+  defaultFleet: checkout
+  defaultPlan: checkout
   source:
-    substrateRef: flux
+    substrate: flux
     registries:
       - name: app
         url: oci://registry.example.com/charts

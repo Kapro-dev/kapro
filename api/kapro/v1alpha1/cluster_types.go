@@ -187,8 +187,8 @@ const (
 
 // ClusterSpec defines the desired state of a cluster in the Fleet fleet.
 type ClusterSpec struct {
-	// Substrate configures the substrate-neutral adapter for this cluster.
-	Substrate SubstrateBindingSpec `json:"substrate"`
+	// Delivery configures the substrate-neutral delivery adapter for this cluster.
+	Substrate SubstrateBindingSpec `json:"delivery"`
 
 	// HealthCheck configures active health polling for this cluster.
 	// +optional
@@ -216,9 +216,9 @@ type ClusterSpec struct {
 	// +optional
 	DesiredVersions map[string]string `json:"desiredVersions,omitempty"`
 
-	// Suspend pauses all reconciliation for this cluster.
+	// Suspended pauses all reconciliation for this cluster.
 	// +optional
-	Suspend bool `json:"suspend,omitempty"`
+	Suspend bool `json:"suspended,omitempty"`
 
 	// ConsecutiveFailureThreshold is the number of consecutive heartbeat
 	// misses required before the Cluster Ready condition flips to False

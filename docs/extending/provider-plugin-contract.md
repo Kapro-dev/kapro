@@ -7,8 +7,7 @@ spoke cluster.
 KSP is different from cloud discovery providers:
 
 - KSP providers perform spoke-side delivery or observation for a substrate
-  kind selected by `Substrate.spec.substrate.kind` or resolved from
-  `Substrate.spec.classRef`.
+  class selected by `Substrate.spec.classRef.name`.
 - Cloud discovery providers enumerate clusters for `ClusterTemplate` import.
 
 Keep those axes separate. Delivery providers must not become broad fleet

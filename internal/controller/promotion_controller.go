@@ -38,9 +38,9 @@ const (
 	// available without an extra Get to the owning Promotion.
 	promotionUIDLabel = "kapro.io/promotion-uid"
 	// promotionFleetLabel propagates the parent Fleet name (the value of
-	// Promotion.spec.fleetRef). PromotionRun.spec.plans carries Plan
+	// Promotion.spec.fleet). PromotionRun.spec.plans carries Plan
 	// names, not the Fleet name, so this label is the only source of
-	// truth for sink-emitted data.fleetRef on run-scoped events.
+	// truth for sink-emitted data.fleet on run-scoped events.
 	promotionFleetLabel = "kapro.io/fleet"
 	supersededReason    = "SupersededByNewPromotionAttempt"
 )
@@ -108,7 +108,7 @@ func (r *PromotionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 	if promotion.Spec.DeliveryUnitRef == "" {
 		return r.patchUnresolved(ctx, &promotion, "DeliveryUnitRefRequired",
-			"spec.deliveryUnitRef is required; Promotion is the explicit action for a DeliveryUnit")
+			"spec.unit is required; Promotion is the explicit action for a DeliveryUnit")
 	}
 
 	// Resolve parent Fleet (cluster-scoped, looked up by name).
@@ -197,7 +197,7 @@ func (r *PromotionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	} else {
 		// Upgrade-path backfill: runs stamped by an older controller may
 		// be missing kapro.io/kapro and kapro.io/promotion-uid. Without
-		// these, wave/stage/gate CloudEvents emit empty data.fleetRef /
+		// these, wave/stage/gate CloudEvents emit empty data.fleet /
 		// data.promotionUID for the entire lifetime of the in-flight
 		// attempt. backfillRunLabels is idempotent — a no-op once the
 		// labels are already in place.
@@ -274,7 +274,7 @@ func (r *PromotionReconciler) stampAttempt(ctx context.Context, p *kaprov1alpha1
 			// backfill the run-scoped CloudEvents labels if a previous
 			// controller version stamped this run without them. In-flight
 			// attempts created before this PR would otherwise emit
-			// wave/stage/gate events with empty data.fleetRef and
+			// wave/stage/gate events with empty data.fleet and
 			// data.promotionUID until the next attempt is stamped.
 			if getErr := r.Get(ctx, client.ObjectKey{Name: name}, run); getErr != nil {
 				return nil, fmt.Errorf("re-fetch PromotionRun after AlreadyExists: %w", getErr)
@@ -295,11 +295,11 @@ func (r *PromotionReconciler) stampAttempt(ctx context.Context, p *kaprov1alpha1
 // upgrade path: runs stamped by an older PromotionController had only
 // kapro.io/promotion and kapro.io/promotion-spec-hash labels. Without
 // the backfill, in-flight attempts created before this PR would emit
-// wave/stage/gate CloudEvents with empty data.fleetRef and
+// wave/stage/gate CloudEvents with empty data.fleet and
 // data.promotionUID until they completed and a new attempt was stamped.
 //
 // Idempotent: a no-op when both labels are already set or when the
-// parent Promotion has no spec.fleetRef / UID to copy.
+// parent Promotion has no spec.fleet / UID to copy.
 func (r *PromotionReconciler) backfillRunLabels(ctx context.Context,
 	run *kaproruntimev1alpha1.PromotionRun, p *kaprov1alpha1.Promotion) error {
 	wantKapro := p.Spec.FleetRef
@@ -578,7 +578,7 @@ func buildRunSpec(p *kaprov1alpha1.Promotion, parent *kaprov1alpha1.Fleet, unit 
 		}}
 	}
 	if len(plans) == 0 {
-		return kaprov1alpha1.PromotionRunSpec{}, fmt.Errorf("set spec.planRef, spec.plans, DeliveryUnit.spec.defaultPlanRef, or legacy Fleet.spec.plan")
+		return kaprov1alpha1.PromotionRunSpec{}, fmt.Errorf("set spec.plan, spec.plans, DeliveryUnit.spec.defaultPlan, or legacy Fleet.spec.plan")
 	}
 	if p.Spec.Version == "" && len(p.Spec.Versions) == 0 {
 		return kaprov1alpha1.PromotionRunSpec{}, fmt.Errorf("either spec.version or spec.versions must be set")
@@ -601,7 +601,7 @@ func buildRunSpec(p *kaprov1alpha1.Promotion, parent *kaprov1alpha1.Fleet, unit 
 
 // promotionSpecHash is the deterministic hash of the Promotion spec used to
 // detect drift and trigger a new attempt. Excludes Suspended (suspending
-// should not create a new attempt) and includes the fleetRef so cross-fleet
+// should not create a new attempt) and includes the fleet so cross-fleet
 // retargeting also stamps a fresh run.
 func promotionSpecHash(s *kaprov1alpha1.PromotionSpec) string {
 	h := sha256.New()
@@ -793,12 +793,12 @@ func (r *PromotionReconciler) emitPhaseTransitionEvent(p *kaprov1alpha1.Promotio
 	r.Recorder.Event(p, eventType, reason, msg)
 }
 
-// promotionFleetRefIndex is the field-indexer key on Promotion.spec.fleetRef.
+// promotionFleetRefIndex is the field-indexer key on Promotion.spec.fleet.
 // The PromotionController uses it to map a Kapro change event to the small
 // set of Promotions that actually reference that fleet, instead of listing
 // every Promotion and filtering in memory.
-const promotionFleetRefIndex = "spec.fleetRef"
-const promotionDeliveryUnitRefIndex = "spec.deliveryUnitRef"
+const promotionFleetRefIndex = "spec.fleet"
+const promotionDeliveryUnitRefIndex = "spec.unit"
 
 func (r *PromotionReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	ctx, cancel := fieldIndexerSetupContext()
@@ -816,7 +816,7 @@ func (r *PromotionReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			return []string{p.Spec.FleetRef}
 		},
 	); err != nil {
-		return fmt.Errorf("index Promotion.spec.fleetRef: %w", err)
+		return fmt.Errorf("index Promotion.spec.fleet: %w", err)
 	}
 	if err := mgr.GetFieldIndexer().IndexField(
 		ctx,
@@ -830,7 +830,7 @@ func (r *PromotionReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			return []string{p.Spec.DeliveryUnitRef}
 		},
 	); err != nil {
-		return fmt.Errorf("index Promotion.spec.deliveryUnitRef: %w", err)
+		return fmt.Errorf("index Promotion.spec.unit: %w", err)
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).

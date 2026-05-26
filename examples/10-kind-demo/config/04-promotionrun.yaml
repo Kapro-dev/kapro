@@ -10,8 +10,8 @@ metadata:
     kapro.io/unit: checkout
     kapro.io/demo: kind
 spec:
-  deliveryUnitRef: checkout
-  fleetRef: checkout
+  unit: checkout
+  fleet: checkout
   version: v1.2.3-kind
   plans:
     - name: main

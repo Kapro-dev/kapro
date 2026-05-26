@@ -213,7 +213,7 @@ func validatePromotionExample(t *testing.T, path string, promotion *kaprov1alpha
 		t.Fatalf("%s: %s label is required for public examples", path, kaprov1alpha1.LabelTeam)
 	}
 	if promotion.Spec.DeliveryUnitRef == "" || promotion.Spec.FleetRef == "" {
-		t.Fatalf("%s: promotion must reference deliveryUnitRef and fleetRef: %#v", path, promotion.Spec)
+		t.Fatalf("%s: promotion must reference unit and fleet: %#v", path, promotion.Spec)
 	}
 	if promotion.Spec.Version == "" && len(promotion.Spec.Versions) == 0 {
 		t.Fatalf("%s: promotion must set version or versions", path)

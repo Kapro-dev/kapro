@@ -75,7 +75,7 @@ require_text "${TMPDIR}/new-repo-flux/clusters/canary-eu.yaml" "ociRepository: c
 require_text "${TMPDIR}/new-repo-flux/clusters/canary-eu.yaml" "kapro.io/stage: canary"
 require_text "${TMPDIR}/new-repo-flux/clusters/prod-eu.yaml" "kapro.io/stage: production"
 require_text "${TMPDIR}/new-repo-flux/promotions/checkout-promotion.yaml" "kind: Promotion"
-require_text "${TMPDIR}/new-repo-flux/promotions/checkout-promotion.yaml" "fleetRef: checkout"
+require_text "${TMPDIR}/new-repo-flux/promotions/checkout-promotion.yaml" "fleet: checkout"
 require_text "${TMPDIR}/new-repo-flux/promotions/checkout-promotion.yaml" "timeout: 30m"
 
 echo "smoke: guided bootstrap new-repo defaults"

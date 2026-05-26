@@ -22,7 +22,7 @@ import (
 )
 
 const defaultSubstrateDiscoveryPolicySyncInterval = 5 * time.Minute
-const adapterPolicySubstrateRefIndex = ".spec.substrateRef"
+const adapterPolicySubstrateRefIndex = ".spec.substrate"
 
 var defaultSubstrateDiscoveryPolicyRegistry = newDefaultSubstrateDiscoveryPolicyRegistry()
 
@@ -122,12 +122,12 @@ func (r *SubstrateDiscoveryPolicyReconciler) discover(ctx context.Context, polic
 	if expected := policy.Spec.ExpectedKind; expected != "" && substrate.Spec.SubstrateKind() != expected {
 		return adapterPolicyDiscoveryOutcome{reason: "SubstrateKindMismatch", message: fmt.Sprintf("policy expected substrate kind %q but substrate %q resolved to %q", expected, substrate.Name, substrate.Spec.SubstrateKind())}, nil
 	}
-	if substrate.Spec.Discovery == nil || !substrate.Spec.Discovery.Enabled {
+	if !substrate.Spec.Discovery.Active() {
 		// Substrate opted out of discovery. SubstrateReconciler is the
 		// single writer for Substrate.status discovery fields; it
 		// already clears them when discovery is disabled. Do not
 		// mirror anything from here.
-		return adapterPolicyDiscoveryOutcome{reason: "DiscoveryDisabled", message: fmt.Sprintf("substrate %s does not have spec.discovery.enabled=true", substrate.Name)}, nil
+		return adapterPolicyDiscoveryOutcome{reason: "DiscoveryDisabled", message: fmt.Sprintf("substrate %s discovery is suspended or not configured", substrate.Name)}, nil
 	}
 	a, err := r.adapterRegistry().ResolveKind(substrate.Spec.SubstrateKind())
 	if err != nil {

@@ -6,7 +6,7 @@ Kubernetes YAML plus a `kubernetes-apply` `SubstrateClass`, typed
 CD install is required for the generated repo shape.
 
 The built-in direct runtime updates the generated Deployment image through the
-Kubernetes API. It is intentionally narrow for `0.6.0`: bootstrap applies the
+Kubernetes API. It is intentionally narrow for `0.6.2`: bootstrap applies the
 initial raw manifests, and Kapro owns promotion-time image changes and
 convergence observation.
 

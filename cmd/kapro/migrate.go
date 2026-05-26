@@ -69,7 +69,9 @@ func migrateSubstrateObject(in *kaprov1alpha1.Substrate) *kaprov1alpha1.Substrat
 		Labels:      cloneStringMap(in.Labels),
 		Annotations: cloneStringMap(in.Annotations),
 	}
-	out.Spec.Substrate = in.Spec.CanonicalSubstrate()
+	if kind := in.Spec.SubstrateKind(); kind != "" {
+		out.Spec.ClassRef = &kaprov1alpha1.SubstrateClassReference{Name: kind}
+	}
 	out.Spec.Execution = in.Spec.CanonicalExecution()
 	out.Status = kaprov1alpha1.SubstrateStatus{}
 	return out

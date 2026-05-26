@@ -188,7 +188,7 @@ metadata:
   name: checkout
 spec:
   source:
-    substrateRef: checkout
+    substrate: checkout
     units:
       - name: api
         substrateKind: ArgoApplicationSource
@@ -252,7 +252,7 @@ intent, switch the profile:
 ```yaml
 spec:
   discovery:
-    enabled: true
+    suspended: false
     managementPolicy: Adopt
 ```
 
@@ -292,8 +292,8 @@ kind: Promotion
 metadata:
   name: checkout-2026-05-15
 spec:
-  deliveryUnitRef: checkout
-  fleetRef: checkout
+  unit: checkout
+  fleet: checkout
   version: 1.5.0
   plans:
     - name: main

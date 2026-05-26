@@ -6,7 +6,7 @@ metadata:
     kapro.io/unit: hello-world
     kapro.io/team: tutorial
 spec:
-  deliveryUnitRef: hello-world
-  fleetRef: hello-world
+  unit: hello-world
+  fleet: hello-world
   version: 0.1.1
   timeout: 30m

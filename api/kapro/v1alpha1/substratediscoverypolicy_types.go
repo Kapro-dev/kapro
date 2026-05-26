@@ -5,12 +5,13 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 // SubstrateDiscoveryPolicySpec configures continuous discovery for an existing
 // substrate profile.
 type SubstrateDiscoveryPolicySpec struct {
-	// SubstrateRef names the Substrate profile this policy keeps in sync.
+	// Substrate names the Substrate profile this policy keeps in sync.
 	// +kubebuilder:validation:MinLength=1
-	SubstrateRef string `json:"substrateRef"`
+	SubstrateRef string `json:"substrate"`
 	// ExpectedKind optionally pins the referenced Substrate to a specific
-	// substrate.kind, for example argo or flux. When set and the referenced
-	// Substrate resolves to a different kind, the policy fails closed.
+	// SubstrateClass name, for example argo or flux. When set and the
+	// referenced Substrate resolves to a different kind, the policy fails
+	// closed.
 	// +optional
 	// +kubebuilder:validation:Pattern=`^[a-z][a-z0-9-]{0,62}$`
 	// +kubebuilder:validation:MaxLength=63
@@ -49,7 +50,7 @@ type SubstrateDiscoveryPolicyStatus struct {
 // +kubebuilder:storageversion
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster,shortName=sdp,categories=kapro-all
-// +kubebuilder:printcolumn:name="Substrate",type=string,JSONPath=`.spec.substrateRef`
+// +kubebuilder:printcolumn:name="Substrate",type=string,JSONPath=`.spec.substrate`
 // +kubebuilder:printcolumn:name="Expected",type=string,JSONPath=`.spec.expectedKind`
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 // +kubebuilder:printcolumn:name="Objects",type=integer,JSONPath=`.status.discoveredObjects`

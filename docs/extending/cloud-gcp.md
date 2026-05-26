@@ -49,7 +49,7 @@ Same-project example:
   --hub-region    europe-west4 \
   --spoke-cluster spoke-de \
   --spoke-region  europe-west1 \
-  --image         europe-west4-docker.pkg.dev/my-project/kapro/cluster-controller:v0.6.0 \
+  --image         europe-west4-docker.pkg.dev/my-project/kapro/cluster-controller:v0.6.2 \
   --gcp-sa        kapro-cc@my-project.iam.gserviceaccount.com \
   --labels        tier=prod,country=de
 ```
@@ -66,7 +66,7 @@ Cross-project example:
   --spoke-cluster spoke-de \
   --spoke-region  europe-west1 \
   --hub-url       https://10.132.0.10 \
-  --image         europe-west4-docker.pkg.dev/my-hub-project/kapro/cluster-controller:v0.6.0 \
+  --image         europe-west4-docker.pkg.dev/my-hub-project/kapro/cluster-controller:v0.6.2 \
   --gcp-sa        kapro-cc@my-spoke-de-project.iam.gserviceaccount.com \
   --labels        tier=prod,country=de
 ```

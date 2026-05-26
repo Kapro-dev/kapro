@@ -9,8 +9,8 @@ metadata:
     kapro.io/team: platform
     app.kubernetes.io/name: checkout
 spec:
-  deliveryUnitRef: checkout-oci
-  fleetRef: checkout-oci
-  planRef: checkout-oci
+  unit: checkout-oci
+  fleet: checkout-oci
+  plan: checkout-oci
   version: v1.2.3
   timeout: 30m

@@ -85,9 +85,6 @@ func TestImportSubstrateObjectsUseClassRefAndTypedConfig(t *testing.T) {
 	if !ok {
 		t.Fatalf("substrate object=%#v", objects[2])
 	}
-	if substrate.Spec.Substrate != nil {
-		t.Fatalf("live import should not emit legacy substrate implementation: %#v", substrate.Spec.Substrate)
-	}
 	if substrate.Spec.ClassRef == nil || substrate.Spec.ClassRef.Name != "flux" {
 		t.Fatalf("classRef=%#v, want flux", substrate.Spec.ClassRef)
 	}
@@ -246,8 +243,7 @@ func TestCreateOrUpdateObjectPatchPreservesExistingMetadata(t *testing.T) {
 	if got.Generation != existing.Generation {
 		t.Fatalf("generation=%d, want %d", got.Generation, existing.Generation)
 	}
-	if got.Spec.Substrate != nil ||
-		got.Spec.ClassRef == nil ||
+	if got.Spec.ClassRef == nil ||
 		got.Spec.ClassRef.Name != "flux" ||
 		got.Spec.ConfigRef == nil ||
 		got.Spec.ConfigRef.Kind != "FluxSubstrateConfig" ||
@@ -300,7 +296,7 @@ func TestCreateOrUpdateObjectPatchDryRunUsesClientDryRun(t *testing.T) {
 	existing := &kaprov1alpha1.Substrate{
 		ObjectMeta: metav1.ObjectMeta{Name: "flux"},
 		Spec: kaprov1alpha1.SubstrateSpec{
-			Substrate: &kaprov1alpha1.SubstrateImplementationSpec{Kind: "flux", Actuator: "flux"},
+			ClassRef: &kaprov1alpha1.SubstrateClassReference{Name: "flux"},
 		},
 	}
 	c := &recordingAdoptClient{Client: fakeAdoptClient(t, existing)}

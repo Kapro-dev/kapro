@@ -119,6 +119,60 @@ spec:
                   type: object
                 minItems: 1
                 type: array
+              delivery:
+                description: |-
+                  Delivery selects the substrate-neutral delivery defaults copied to
+                  generated Cluster objects.
+                properties:
+                  mode:
+                    default: pull
+                    description: Mode controls where substrate execution happens.
+                    enum:
+                    - push
+                    - pull
+                    type: string
+                  parameters:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      Parameters are opaque substrate-specific settings, following the
+                      StorageClass.parameters pattern. Fleet core does not interpret them.
+                    type: object
+                  ref:
+                    description: |-
+                      Ref is the Substrate name. Built-in profiles commonly use "flux" or
+                      "argo"; external profiles may use any platform-defined name.
+                    type: string
+                  staging:
+                    description: |-
+                      Staging declares optional pre-commit safety semantics for substrates that
+                      support staging. When omitted, existing substrate defaults are preserved.
+                      The built-in OCI pull substrate already uses TwoPhase/Abort behavior.
+                    properties:
+                      failurePolicy:
+                        default: Abort
+                        description: |-
+                          FailurePolicy selects how dry-run failures affect commit. Abort is the
+                          only supported policy and means no object is committed when any staged
+                          object fails validation.
+                        enum:
+                        - Abort
+                        type: string
+                      type:
+                        default: TwoPhase
+                        description: Type selects the staging strategy. TwoPhase is
+                          the only supported value.
+                        enum:
+                        - TwoPhase
+                        type: string
+                    type: object
+                required:
+                - mode
+                - ref
+                type: object
+                x-kubernetes-validations:
+                - message: delivery.ref is required
+                  rule: has(self.ref) && self.ref != ""
               plan:
                 description: |-
                   Plan is a compatibility hook for legacy inline rollout stages. New
@@ -957,11 +1011,11 @@ spec:
                       - url
                       type: object
                     type: array
-                  substrateRef:
+                  substrate:
                     description: |-
-                      SubstrateRef is the Substrate this source is normally discovered from
-                      or packaged for. Fleet uses it as metadata; delivery still comes from
-                      Fleet.spec.substrate and Cluster.spec.substrate.
+                      Substrate is the Substrate this source is normally discovered from or
+                      packaged for. Fleet uses it as metadata; delivery still comes from
+                      Fleet.spec.delivery and Cluster.spec.delivery.
                     type: string
                   units:
                     description: Units defines the native deployable units DeliveryUnit/Promotion
@@ -1025,8 +1079,8 @@ spec:
                             to an existing object, for example Application, ApplicationSet,
                             Kustomization, or HelmRelease.
                           type: string
-                        suspend:
-                          description: Suspend pauses reconciliation for this unit.
+                        suspended:
+                          description: Suspended pauses reconciliation for this unit.
                           type: boolean
                         targetNamespace:
                           description: |-
@@ -1102,76 +1156,13 @@ spec:
                   The public-preview authoring path puts source intent on DeliveryUnit and
                   lets Kapro derive Source objects from that layer.
                 type: string
-              substrate:
-                description: |-
-                  Substrate selects the substrate-neutral defaults copied to
-                  generated Cluster objects.
-                properties:
-                  mode:
-                    default: pull
-                    description: Mode controls where substrate execution happens.
-                    enum:
-                    - push
-                    - pull
-                    type: string
-                  parameters:
-                    additionalProperties:
-                      type: string
-                    description: |-
-                      Parameters are opaque substrate-specific settings, following the
-                      StorageClass.parameters pattern. Fleet core does not interpret them.
-                    type: object
-                  ref:
-                    description: |-
-                      Ref is the Substrate name. Built-in profiles commonly use "flux" or
-                      "argo"; external profiles may use any platform-defined name.
-                    type: string
-                  staging:
-                    description: |-
-                      Staging declares optional pre-commit safety semantics for substrates that
-                      support staging. When omitted, existing substrate defaults are preserved.
-                      The built-in OCI pull substrate already uses TwoPhase/Abort behavior.
-                    properties:
-                      failurePolicy:
-                        default: Abort
-                        description: |-
-                          FailurePolicy selects how dry-run failures affect commit. Abort is the
-                          only supported policy and means no object is committed when any staged
-                          object fails validation.
-                        enum:
-                        - Abort
-                        type: string
-                      type:
-                        default: TwoPhase
-                        description: Type selects the staging strategy. TwoPhase is
-                          the only supported value.
-                        enum:
-                        - TwoPhase
-                        type: string
-                    type: object
-                  substrateRef:
-                    description: |-
-                      SubstrateRef is the deprecated spelling of Ref.
-                      Deprecated: use ref.
-                    type: string
-                required:
-                - mode
-                type: object
-                x-kubernetes-validations:
-                - message: spec.substrate.ref is required
-                  rule: (has(self.ref) && self.ref != "") || (has(self.substrateRef)
-                    && self.substrateRef != "")
-                - message: spec.substrate.ref and deprecated spec.substrate.substrateRef
-                    must match when both are set
-                  rule: '!((has(self.ref) && self.ref != "") && (has(self.substrateRef)
-                    && self.substrateRef != "")) || self.ref == self.substrateRef'
               suspended:
                 default: false
                 description: Suspended pauses Fleet reconciliation.
                 type: boolean
             required:
             - clusters
-            - substrate
+            - delivery
             type: object
           status:
             description: FleetStatus defines the observed state of Fleet.

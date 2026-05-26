@@ -84,7 +84,7 @@ func TestRunFluxDiscoverWritesMapping(t *testing.T) {
 	gitMap := readFile(t, filepath.Join(out, "discovery/kapro-git-map.yaml"))
 	for _, want := range []string{
 		"schemaVersion: kapro.io/git-adoption/v1alpha1",
-		"deliveryUnitRef: checkout",
+		"unit: checkout",
 		"confidence: high",
 		"confidence: needs-review",
 		"sourcePath: flux/helmreleases/payments.yaml",

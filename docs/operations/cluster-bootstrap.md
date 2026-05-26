@@ -123,7 +123,7 @@ Kapro.
 kubectl apply -f /tmp/de-prod-01-bootstrap-secret.yaml
 
 helm install kapro-cluster-controller \
-  https://github.com/Kapro-dev/kapro/releases/download/v0.6.0/kapro-cluster-controller-0.6.0.tgz \
+  https://github.com/Kapro-dev/kapro/releases/download/v0.6.2/kapro-cluster-controller-0.6.2.tgz \
   -n kapro-system --create-namespace \
   -f /tmp/de-prod-01-values.yaml
 ```

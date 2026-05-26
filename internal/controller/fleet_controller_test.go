@@ -253,8 +253,8 @@ func TestFleetReconcilerSkipsResourceSetForNativeSubstrates(t *testing.T) {
 				Units: []kaprov1alpha1.Unit{{Name: "checkout", Version: "ghcr.io/example/checkout:0.1.0"}},
 			},
 			Substrate: kaprov1alpha1.SubstrateBindingSpec{
-				Mode:         kaprov1alpha1.SubstrateModePush,
-				SubstrateRef: "direct",
+				Mode: kaprov1alpha1.SubstrateModePush,
+				Ref:  "direct",
 			},
 			Clusters: []kaprov1alpha1.ClusterRef{{Name: "canary-eu", Labels: map[string]string{"kapro.io/stage": "canary"}}},
 			Plan: kaprov1alpha1.KaproPlan{
@@ -308,8 +308,8 @@ func TestFleetReconcilerAcceptsTargetSetWithoutSourceOrInlinePlan(t *testing.T) 
 		ObjectMeta: metav1.ObjectMeta{Name: "checkout"},
 		Spec: kaprov1alpha1.FleetSpec{
 			Substrate: kaprov1alpha1.SubstrateBindingSpec{
-				Mode:         kaprov1alpha1.SubstrateModePush,
-				SubstrateRef: "argo",
+				Mode: kaprov1alpha1.SubstrateModePush,
+				Ref:  "argo",
 				Parameters: map[string]string{
 					"namespace": "argocd",
 				},

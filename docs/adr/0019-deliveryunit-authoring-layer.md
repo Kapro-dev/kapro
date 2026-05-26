@@ -26,7 +26,7 @@ delivery definition.
 
 - source mapping intent in `spec.source`;
 - optional trigger intent in `spec.triggers`;
-- default `fleetRef` and `planRef` for generated promotions;
+- default `fleet` and `plan` values for generated promotions;
 - stable labels, especially `kapro.io/unit`.
 
 The DeliveryUnit controller derives:
@@ -44,15 +44,15 @@ substrate defaults for those clusters. It must not be the primary owner of
 source mapping intent.
 
 The user-authored Fleet and Cluster substrate binding is named
-`spec.substrate`, not `spec.delivery`. A Fleet or Cluster selects how work is
+`spec.delivery`. A Fleet or Cluster selects how work is
 applied or synced; it does not itself represent a delivery action. Runtime
 progress may still use `status.delivery` because that status records concrete
 delivery execution.
 
 `Promotion` remains an explicit user-authored action. Changing
 `DeliveryUnit.spec.source` or a future `DeliveryUnit.spec.version` must not
-silently deploy. A rollout still starts from a `Promotion` that references a
-`deliveryUnitRef`, `fleetRef`, and `planRef` or explicit plan overrides.
+silently deploy. A rollout still starts from a `Promotion` that references
+`unit`, `fleet`, and `plan` or explicit plan overrides.
 
 Runtime objects stay unchanged in principle:
 
@@ -107,7 +107,7 @@ not visibility.
   source mappings.
 - `kapro source apply` accepts DeliveryUnit YAML and continues accepting legacy
   Source YAML for local mapping files.
-- Promotion and PromotionRun carry `deliveryUnitRef`; runtime Target objects get
+- Promotion and PromotionRun carry `unit`; runtime Target objects get
   the canonical `kapro.io/unit` label.
 - `Fleet` still serves older inline source and plan fields as compatibility
   inputs during the 0.6.x hard-migration window. They are not emitted by

@@ -17,7 +17,7 @@
 // visibility into convergence without dialing into the spoke.
 //
 // Parameters consumed from ReconcileRequest.Parameters (merged from
-// SubstrateProfile.spec.parameters and FleetCluster.spec.substrate.parameters,
+// SubstrateProfile.spec.parameters and FleetCluster.spec.delivery.parameters,
 // cluster wins):
 //
 //	ociRepositoryName        — name of the Flux OCIRepository on the spoke

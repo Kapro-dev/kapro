@@ -35,34 +35,10 @@ Substrate-specific parameters belong in typed config CRDs owned by that
 substrate package. Kapro core should not need to know the schema of an Argo CD,
 Flux, KServe, webhook, or internal platform config.
 
-The older open-string shape remains accepted during the migration window:
-
-| Field | Meaning |
-| --- | --- |
-| `spec.substrate.kind` | The delivery domain, such as `argo`, `flux`, `oci`, `webhook`, or a platform-owned value like `company-paas`. |
-| `spec.substrate.actuator` | The concrete Kapro implementation or plugin for that domain. Optional for built-ins. |
-| `spec.execution.mode` | Where and how delivery runs. |
-
-Compatibility example:
-
-```yaml
-apiVersion: kapro.io/v1alpha1
-kind: Substrate
-metadata:
-  name: hello-world
-spec:
-  substrate:
-    kind: hello-world
-    actuator: hello-world
-  execution:
-    mode: hub-push
-```
-
-`substrate.kind` remains intentionally open. Kapro validates the format with
-the same lowercase DNS-style shape Kubernetes users expect, but it does not
-restrict the value to a closed enum. New public examples should prefer
-`classRef` plus `configRef`; the string shape is kept for existing manifests
-and migration.
+The older open-string shape `spec.substrate.kind/actuator` was removed in the
+0.6.2 public-preview reset. Custom substrates now use the same
+`SubstrateClass` shape as built-in substrates, which avoids encoding the
+selected substrate twice.
 
 ## Execution Modes
 
@@ -77,8 +53,8 @@ combinations such as "hub pulls" are not meaningful for the public API.
 
 ## Removed Prototype Fields
 
-Kapro 0.6 removes the oldest prototype fields and keeps one compatibility
-bridge for early adopters:
+Kapro 0.6.2 removes the oldest prototype fields and the interim open-string
+substrate bridge:
 
 | Removed field | Compatibility field | Preferred field |
 | --- | --- | --- |
@@ -86,9 +62,7 @@ bridge for early adopters:
 | `spec.adapter` | `spec.substrate.actuator` | `spec.classRef.name` plus controller-owned class status |
 | `spec.runtime` | `spec.execution.mode` | `spec.execution.mode` |
 
-New manifests should use the preferred fields. `spec.substrate.kind` and
-`spec.substrate.actuator` remain accepted for compatibility during the v0.6.x
-line and are scheduled for deliberate v0.7.x cleanup.
+New manifests must use the preferred fields.
 
 ## Reference Fields
 
@@ -106,10 +80,10 @@ That gives users three predictable shapes:
 | --- | --- | --- |
 | Object reference | The target may need `name`, `namespace`, `apiVersion`, `kind`, or resolver metadata. | `configRef.name`, `pipelineRef.name`, `secretRef.name`, `sourceRef.kind/name`. |
 | Local name | The API server already knows the target kind and scope, and the field is part of the core Kapro action vocabulary. | `unit: checkout`, `fleet: production`, `plan: progressive`. |
-| Nested binding | The parent field already names the domain. | `spec.substrate.ref: flux`, not `spec.substrate.substrateRef`. |
+| Nested binding | The parent field already names the domain. | `spec.delivery.ref: flux`, not `spec.delivery.substrateRef`. |
 
-Compatibility fields such as `deliveryUnitRef: checkout`,
-`fleetRef: checkout`, `planRef: progressive`, and `sourceRef: catalog` remain
+Compatibility fields such as `unit: checkout`,
+`fleet: checkout`, `plan: progressive`, and `sourceRef: catalog` remain
 accepted in the v0.6.x line where they already exist. New examples and future
 API versions should avoid adding scalar `*Ref` fields.
 

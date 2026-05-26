@@ -29,7 +29,7 @@ func TestLintPromotion_RejectsMissingRequired(t *testing.T) {
 	p := &kaprov1alpha1.Promotion{}
 	issues := LintPromotion(p)
 
-	for _, want := range []string{"metadata.name", "fleetRef", "deliveryUnitRef", "version"} {
+	for _, want := range []string{"metadata.name", "fleet", "unit", "version"} {
 		hit := findIssue(t, issues, want)
 		if hit == nil {
 			t.Errorf("missing expected issue for %q; got %+v", want, issues)
@@ -67,7 +67,7 @@ func TestLintDeliveryUnit_RejectsInvalidSourceAndTriggers(t *testing.T) {
 		"metadata.name",
 		"duplicate unit",
 		"unit name",
-		"trigger requires fleetRef",
+		"trigger requires fleet",
 		"source.oci",
 		"duplicate derived Trigger suffix",
 		"unsupported trigger source type",
@@ -92,7 +92,7 @@ spec:
   source:
     units:
       - name: api
-  defaultFleetRef: checkout
+  defaultFleet: checkout
   triggers:
     - source:
         type: oci
@@ -246,8 +246,8 @@ kind: Promotion
 metadata:
   name: a
 spec:
-  deliveryUnitRef: du
-  fleetRef: k
+  unit: du
+  fleet: k
   version: v1
   timeout: 30m
 ---
@@ -256,8 +256,8 @@ kind: Promotion
 metadata:
   name: b
 spec:
-  deliveryUnitRef: du
-  fleetRef: k
+  unit: du
+  fleet: k
   # missing version
 `))
 	// First doc: clean.
@@ -436,9 +436,9 @@ func TestLintKapro_MissingSubstrateIsError(t *testing.T) {
 		},
 	}
 	issues := LintKapro(k)
-	hit := findIssue(t, issues, "spec.substrate.ref")
+	hit := findIssue(t, issues, "spec.delivery.ref")
 	if hit == nil || hit.Severity != SeverityError {
-		t.Fatalf("expected spec.substrate.ref ERROR; got %+v", issues)
+		t.Fatalf("expected spec.delivery.ref ERROR; got %+v", issues)
 	}
 }
 
@@ -520,8 +520,8 @@ kind: Promotion
 metadata:
   name: ok
 spec:
-  deliveryUnitRef: du
-  fleetRef: k
+  unit: du
+  fleet: k
   version: v1
   timeout: 30m
 `))

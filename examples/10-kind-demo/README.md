@@ -65,9 +65,9 @@ The demo manifests are split by role:
 - `checkout-prod-eu`
 - `checkout-prod-us`
 
-Each target uses `spec.substrate.mode: push` with `ref: flux`, pointed at
+Each target uses `spec.delivery.mode: push` with `ref: flux`, pointed at
 the local fixture `ResourceSet` named `checkout-demo` through
-`spec.substrate.parameters.resourceSet`.
+`spec.delivery.parameters.resourceSet`.
 
 `config/02-plan.yaml` defines two stages:
 

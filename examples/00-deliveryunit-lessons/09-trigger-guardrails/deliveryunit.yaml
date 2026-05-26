@@ -8,10 +8,10 @@ metadata:
   annotations:
     kapro.io/change-window: business-hours
 spec:
-  defaultFleetRef: hello-world
-  defaultPlanRef: hello-world
+  defaultFleet: hello-world
+  defaultPlan: hello-world
   source:
-    substrateRef: oci
+    substrate: oci
     units:
       - name: web
         substrateKind: OCIBundle

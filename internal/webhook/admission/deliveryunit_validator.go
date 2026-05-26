@@ -91,7 +91,7 @@ func validateDeliveryUnit(du *kaprov1alpha1.DeliveryUnit) error {
 
 		fleetRef := firstNonEmpty(trigger.FleetRef, du.Spec.DefaultFleetRef)
 		if fleetRef == "" {
-			return fmt.Errorf("deliveryunit.spec.triggers[%d].fleetRef requires fleetRef or spec.defaultFleetRef", i)
+			return fmt.Errorf("deliveryunit.spec.triggers[%d].fleet requires fleet or spec.defaultFleet", i)
 		}
 		if err := validatePromotionTrigger(&kaprov1alpha1.Trigger{
 			Spec: kaprov1alpha1.TriggerSpec{

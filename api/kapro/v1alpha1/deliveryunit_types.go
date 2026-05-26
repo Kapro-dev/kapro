@@ -18,14 +18,14 @@ type DeliveryUnitSpec struct {
 	// +kubebuilder:validation:MaxItems=32
 	// +optional
 	Triggers []DeliveryUnitTrigger `json:"triggers,omitempty"`
-	// DefaultFleetRef is used by CLI and derived triggers when a Promotion
-	// action does not explicitly pick a Fleet.
+	// DefaultFleet is used by CLI and derived triggers when a Promotion action
+	// does not explicitly pick a Fleet.
 	// +optional
-	DefaultFleetRef string `json:"defaultFleetRef,omitempty"`
-	// DefaultPlanRef is used by CLI and derived triggers when a Promotion
-	// action does not explicitly pick a Plan.
+	DefaultFleetRef string `json:"defaultFleet,omitempty"`
+	// DefaultPlan is used by CLI and derived triggers when a Promotion action
+	// does not explicitly pick a Plan.
 	// +optional
-	DefaultPlanRef string `json:"defaultPlanRef,omitempty"`
+	DefaultPlanRef string `json:"defaultPlan,omitempty"`
 	// Policies names reusable governance policies that apply to this unit.
 	// Enforcement is intentionally owned by policy/gate controllers; this field
 	// is the stable attachment point.
@@ -55,14 +55,12 @@ type DeliveryUnitTrigger struct {
 	Suspended *bool `json:"suspended,omitempty"`
 	// Source configures where artifact changes are observed.
 	Source TriggerSource `json:"source"`
-	// FleetRef overrides spec.defaultFleetRef for Promotions created by this
-	// trigger.
+	// Fleet overrides spec.defaultFleet for Promotions created by this trigger.
 	// +optional
-	FleetRef string `json:"fleetRef,omitempty"`
-	// PlanRef overrides spec.defaultPlanRef for Promotions created by this
-	// trigger.
+	FleetRef string `json:"fleet,omitempty"`
+	// Plan overrides spec.defaultPlan for Promotions created by this trigger.
 	// +optional
-	PlanRef string `json:"planRef,omitempty"`
+	PlanRef string `json:"plan,omitempty"`
 	// Cooldown is copied to the derived Trigger.
 	// +optional
 	Cooldown string `json:"cooldown,omitempty"`
@@ -102,8 +100,8 @@ type DeliveryUnitStatus struct {
 // +kubebuilder:storageversion
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster,shortName=du,categories=kapro-all
-// +kubebuilder:printcolumn:name="Fleet",type=string,JSONPath=`.spec.defaultFleetRef`
-// +kubebuilder:printcolumn:name="Plan",type=string,JSONPath=`.spec.defaultPlanRef`
+// +kubebuilder:printcolumn:name="Fleet",type=string,JSONPath=`.spec.defaultFleet`
+// +kubebuilder:printcolumn:name="Plan",type=string,JSONPath=`.spec.defaultPlan`
 // +kubebuilder:printcolumn:name="Source",type=string,JSONPath=`.status.sourceRef`
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`

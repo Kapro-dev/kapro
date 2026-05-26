@@ -6,7 +6,7 @@ Rollout strategy for the direct-apply quickstart.
 canary stage -> production stage
 ```
 
-The Promotion references this Plan through `planRef`.
+The Promotion references this Plan through `plan`.
 
 Apply from the repository root:
 

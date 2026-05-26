@@ -88,9 +88,10 @@ increment.
 `SubstrateDiscoveryPolicy` runs a continuous discovery/status loop for a referenced
 `Substrate`:
 
-- the Substrate must exist and have `spec.discovery.enabled=true`;
+- the Substrate must exist and have an active `spec.discovery` block
+  (`spec.discovery.suspended` omitted or `false`);
 - `SubstrateDiscoveryPolicy.spec.expectedKind`, when set, must match
-  `Substrate.spec.substrate.kind`;
+  `Substrate.spec.classRef.name`;
 - `SubstrateDiscoveryPolicy.spec.selector` is ANDed with `Substrate.spec.discovery.selector`
   before discovery reaches the adapter;
 - `SubstrateDiscoveryPolicy.spec.dryRun=true` validates the policy, Substrate reference,

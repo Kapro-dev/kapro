@@ -30,7 +30,7 @@ kapro.io/authorized-source: "*"
 kapro.io/authorized-unit: checkout-argo
 ```
 
-Use a global `spec.substrate.parameters.application` only for single-target
+Use a global `spec.delivery.parameters.application` only for single-target
 demos. For different Application names per cluster, use standalone `Cluster`
 objects with their own delivery parameters instead of the inline cluster list.
 

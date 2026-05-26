@@ -2,8 +2,8 @@ apiVersion: v2
 name: kapro-archiver
 description: Optional Kapro CloudEvents archive subscriber with file and S3 sinks.
 type: application
-version: 0.6.0
-appVersion: "v0.6.0"
+version: 0.6.2
+appVersion: "v0.6.2"
 home: https://github.com/Kapro-dev/kapro
 sources:
   - https://github.com/Kapro-dev/kapro

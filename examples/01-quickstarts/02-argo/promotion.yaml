@@ -9,8 +9,8 @@ metadata:
     kapro.io/team: platform
     app.kubernetes.io/name: checkout
 spec:
-  deliveryUnitRef: checkout-argo
-  fleetRef: checkout-argo
-  planRef: checkout-argo
+  unit: checkout-argo
+  fleet: checkout-argo
+  plan: checkout-argo
   version: v1.2.3
   timeout: 30m

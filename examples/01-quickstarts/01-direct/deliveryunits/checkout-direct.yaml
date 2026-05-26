@@ -6,10 +6,10 @@ metadata:
     kapro.io/unit: checkout-direct
     kapro.io/team: platform
 spec:
-  defaultFleetRef: checkout-direct
-  defaultPlanRef: checkout-direct
+  defaultFleet: checkout-direct
+  defaultPlan: checkout-direct
   source:
-    substrateRef: direct
+    substrate: direct
     defaults:
       targetNamespace: default
     units:

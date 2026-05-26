@@ -145,7 +145,7 @@ same:
 ```bash
 kapro promote checkout --version v1.2.3
 # Existing GitOps import output does not guess your target set; pass --fleet
-# until you add spec.defaultFleetRef to the generated DeliveryUnit.
+# until you add spec.defaultFleet to the generated DeliveryUnit.
 kapro promote checkout --version v1.2.3 --fleet checkout-prod
 kapro diag checkout-v1-2-3
 kapro tree checkout-v1-2-3
@@ -163,7 +163,7 @@ stamps immutable `PromotionRun` attempts and per-target `Target` records.
 - Live Argo CD Application writes require opt-in labels or annotations.
 - OCI pull delivery uses two-phase staging: server-side dry-run apply for every
   object first, then commit only when the whole staging pass succeeds. The
-  optional `spec.substrate.staging` API currently exposes this conservative
+  optional `spec.delivery.staging` API currently exposes this conservative
   `TwoPhase`/`Abort` contract without changing existing substrate defaults. This
   is validation-atomic before commit, not a Kubernetes transactional rollback:
   commit-phase infrastructure failures are reported and retried rather than

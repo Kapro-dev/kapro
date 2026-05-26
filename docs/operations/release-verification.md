@@ -4,7 +4,7 @@ Kapro release artifacts are intended to be consumed by immutable version, not
 by mutable image tags. Pin charts and images to the same `v0.x.y` release tag
 and verify the artifacts before installing them in production change windows.
 
-The current public preview release is `v0.6.0`.
+The current public preview release is `v0.6.2`.
 
 Use [Public Preview 0.6 Checklist](public-preview-0.6-checklist.md) before
 cutting the tag; this page verifies already-published artifacts.
@@ -28,7 +28,7 @@ gh auth status
 ## Download Release Assets
 
 ```bash
-KAPRO_VERSION=v0.6.0
+KAPRO_VERSION=v0.6.2
 KAPRO_REPO=Kapro-dev/kapro
 
 mkdir -p "kapro-${KAPRO_VERSION}"
@@ -146,7 +146,7 @@ kind delete cluster --name kapro-release-verify
 ```
 
 For upgrade evidence on a supported upgrade path, install the previous release
-and upgrade to the current release. For `v0.6.0`, use the current tag as the
+and upgrade to the current release. For `v0.6.2`, use the current tag as the
 previous version to verify Helm upgrade mechanics; pre-0.6 prototype CRDs require
 the [pre-0.6 API reset](../migration/pre-0.6-api-reset.md) cleanup/migration
 instead of an in-place CRD upgrade.

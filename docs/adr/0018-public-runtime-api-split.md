@@ -55,7 +55,7 @@ The public package may define shared spec/status structs used by those runtime
 CRDs, but it must not register public `PromotionRun` or `Target` roots.
 
 `Backend` is renamed to `Substrate`, and delivery references become
-`spec.substrate.ref`. The built-in Argo user-facing substrate name is
+`spec.delivery.ref`. The built-in Argo user-facing substrate name is
 `argo`, matching `flux`; `argocd` remains a compatibility input where useful
 for CLI profile normalization.
 

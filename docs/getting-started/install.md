@@ -3,8 +3,8 @@
 The recommended public-preview install path is the Helm chart package attached
 to the GitHub Release. It installs the CRDs, controller Deployment,
 ServiceAccount, RBAC, admission webhooks, and baseline approval service
-together. The `0.6.0` chart defaults to
-`ghcr.io/kapro-dev/kapro-operator:v0.6.0`.
+together. The `0.6.2` chart defaults to
+`ghcr.io/kapro-dev/kapro-operator:v0.6.2`.
 
 ## Prerequisites
 
@@ -27,7 +27,7 @@ SBOM attestations, and provenance before installing. See
 ## Install
 
 ```bash
-KAPRO_VERSION=0.6.0
+KAPRO_VERSION=0.6.2
 KAPRO_CHART="https://github.com/Kapro-dev/kapro/releases/download/v${KAPRO_VERSION}/kapro-operator-${KAPRO_VERSION}.tgz"
 
 helm upgrade --install kapro \
@@ -308,7 +308,7 @@ For a release image that is not the chart default:
 
 ```bash
 KAPRO_IMAGE_REPOSITORY=ghcr.io/kapro-dev/kapro-operator \
-KAPRO_IMAGE_TAG=v0.6.0 \
+KAPRO_IMAGE_TAG=v0.6.2 \
 scripts/verify-install.sh cluster
 ```
 
@@ -416,7 +416,7 @@ For a packaged release install without a source checkout, pull the chart before
 deleting CRDs:
 
 ```bash
-helm pull https://github.com/Kapro-dev/kapro/releases/download/v0.6.0/kapro-operator-0.6.0.tgz --untar
+helm pull https://github.com/Kapro-dev/kapro/releases/download/v0.6.2/kapro-operator-0.6.2.tgz --untar
 kubectl delete -f kapro-operator/crds
 kubectl delete namespace kapro-system
 ```

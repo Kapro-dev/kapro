@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Published release tag to install (e.g. v0.6.0).
+        description: Published release tag to install (e.g. v0.6.2).
         required: true
       previous_version:
         description: Optional previous published release tag for a supported upgrade and rollback smoke.

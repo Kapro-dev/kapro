@@ -901,10 +901,10 @@ Examples:
 		},
 	}
 	cmd.Flags().StringVar(&name, "name", "", "Promotion name; defaults to <delivery-unit>-<version>")
-	cmd.Flags().StringVar(&fleetRef, "fleet", "", "Fleet to target; defaults to DeliveryUnit.spec.defaultFleetRef")
+	cmd.Flags().StringVar(&fleetRef, "fleet", "", "Fleet to target; defaults to DeliveryUnit.spec.defaultFleet")
 	cmd.Flags().StringVar(&version, "version", "", "Default revision to deliver")
 	cmd.Flags().StringArrayVar(&versions, "set", nil, "Per-unit revision (repeatable: --set api=sha256:abc)")
-	cmd.Flags().StringArrayVar(&plans, "plan", nil, "Plan override (repeatable); defaults to DeliveryUnit.spec.defaultPlanRef")
+	cmd.Flags().StringArrayVar(&plans, "plan", nil, "Plan override (repeatable); defaults to DeliveryUnit.spec.defaultPlan")
 	cmd.Flags().StringArrayVar(&scope, "scope", nil, "Restrict to target cluster (repeatable: --scope canary-eu --scope prod-eu)")
 	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to kubeconfig")
 	return cmd
@@ -932,7 +932,7 @@ func runPromotionCreate(ctx context.Context, name, deliveryUnitRef, fleetRef, ve
 		fleetRef = unit.Spec.DefaultFleetRef
 	}
 	if fleetRef == "" {
-		return fmt.Errorf("--fleet is required when DeliveryUnit %q has no spec.defaultFleetRef", deliveryUnitRef)
+		return fmt.Errorf("--fleet is required when DeliveryUnit %q has no spec.defaultFleet", deliveryUnitRef)
 	}
 
 	var planRefs []kaprov1alpha1.PlanRef

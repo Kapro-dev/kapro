@@ -71,10 +71,9 @@ func normalizeScenario(p spokeprovider.Provider, scenario Scenario) Scenario {
 	if scenario.Request.SubstrateProfile == nil {
 		scenario.Request.SubstrateProfile = &v1alpha1.Substrate{}
 	}
-	if scenario.Request.SubstrateProfile.Spec.Substrate == nil || scenario.Request.SubstrateProfile.Spec.Substrate.Kind == "" {
-		scenario.Request.SubstrateProfile.Spec.Substrate = &v1alpha1.SubstrateImplementationSpec{
-			Kind:     string(p.SubstrateKind()),
-			Actuator: string(p.SubstrateKind()),
+	if scenario.Request.SubstrateProfile.Spec.ClassRef == nil || scenario.Request.SubstrateProfile.Spec.ClassRef.Name == "" {
+		scenario.Request.SubstrateProfile.Spec.ClassRef = &v1alpha1.SubstrateClassReference{
+			Name: string(p.SubstrateKind()),
 		}
 	}
 	return scenario

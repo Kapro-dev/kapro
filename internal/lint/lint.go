@@ -225,8 +225,8 @@ func LintDeliveryUnit(du *kaprov1alpha1.DeliveryUnit) []Issue {
 			seenTriggers[name] = i
 		}
 		if strings.TrimSpace(trigger.FleetRef) == "" && strings.TrimSpace(du.Spec.DefaultFleetRef) == "" {
-			out = append(out, errAt(fmt.Sprintf("spec.triggers[%d].fleetRef", i),
-				"trigger requires fleetRef or spec.defaultFleetRef"))
+			out = append(out, errAt(fmt.Sprintf("spec.triggers[%d].fleet", i),
+				"trigger requires fleet or spec.defaultFleet"))
 		}
 		if trigger.Source.Type == "" {
 			out = append(out, errAt(fmt.Sprintf("spec.triggers[%d].source.type", i),
@@ -271,7 +271,7 @@ func LintKapro(k *kaprov1alpha1.Fleet) []Issue {
 			"only one of spec.source or spec.sourceRef may be set"))
 	}
 	if k.Spec.Substrate.SubstrateName() == "" {
-		out = append(out, errAt("spec.substrate.ref",
+		out = append(out, errAt("spec.delivery.ref",
 			"delivery substrate is required (e.g. flux, argo)"))
 	}
 	if len(k.Spec.Clusters) == 0 {
@@ -288,10 +288,10 @@ func LintPromotion(p *kaprov1alpha1.Promotion) []Issue {
 		out = append(out, errAt("metadata.name", "Promotion requires a name"))
 	}
 	if p.Spec.FleetRef == "" {
-		out = append(out, errAt("spec.fleetRef", "fleetRef is required"))
+		out = append(out, errAt("spec.fleet", "fleet is required"))
 	}
 	if p.Spec.DeliveryUnitRef == "" {
-		out = append(out, errAt("spec.deliveryUnitRef", "deliveryUnitRef is required"))
+		out = append(out, errAt("spec.unit", "unit is required"))
 	}
 	if p.Spec.Version == "" && len(p.Spec.Versions) == 0 {
 		out = append(out, errAt("spec.version / spec.versions",

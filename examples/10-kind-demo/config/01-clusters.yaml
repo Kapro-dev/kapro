@@ -6,7 +6,7 @@ metadata:
     kapro.io/tier: canary
     kapro.io/region: eu
 spec:
-  substrate:
+  delivery:
     mode: push
     ref: flux
     parameters:
@@ -23,7 +23,7 @@ metadata:
     kapro.io/tier: production
     kapro.io/region: eu
 spec:
-  substrate:
+  delivery:
     mode: push
     ref: flux
     parameters:
@@ -40,7 +40,7 @@ metadata:
     kapro.io/tier: production
     kapro.io/region: us
 spec:
-  substrate:
+  delivery:
     mode: push
     ref: flux
     parameters:

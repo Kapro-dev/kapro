@@ -715,7 +715,6 @@ spec:
   execution:
     mode: hub-push
   discovery:
-    enabled: true
     managementPolicy: %s
     maxObjects: 1000
     selector:
@@ -756,7 +755,7 @@ metadata:
     kapro.io/unit: %s
     kapro.io/stage: %s
 spec:
-  substrate:
+  delivery:
     mode: %s
     ref: %s
     parameters:
@@ -792,9 +791,9 @@ metadata:
     kapro.io/team: %s
 spec:
 %s
-  defaultPlanRef: %s
+  defaultPlan: %s
   source:
-    substrateRef: %s
+    substrate: %s
     defaults:
       targetNamespace: %s
     units:
@@ -815,9 +814,9 @@ metadata:
     kapro.io/team: %s
 spec:
 %s
-  defaultPlanRef: %s
+  defaultPlan: %s
   source:
-    substrateRef: %s
+    substrate: %s
     registries:
       - name: app
         url: %s
@@ -878,7 +877,7 @@ metadata:
     kapro.io/managed-by: kapro
     kapro.io/team: %s
 spec:
-  substrate:
+  delivery:
     mode: %s
     ref: %s
     parameters:
@@ -899,7 +898,7 @@ metadata:
     kapro.io/managed-by: kapro
     kapro.io/team: %s
 spec:
-  substrate:
+  delivery:
     mode: %s
     ref: %s
     parameters:
@@ -919,9 +918,9 @@ metadata:
     kapro.io/managed-by: kapro
     kapro.io/team: %s
 spec:
-  deliveryUnitRef: %s
-  fleetRef: %s
-  planRef: %s
+  unit: %s
+  fleet: %s
+  plan: %s
   version: %s
   timeout: 30m
 `, opts.Name, opts.Name, opts.Team, opts.Name, opts.Name, opts.Name, defaultScaffoldVersion(opts))
@@ -1259,7 +1258,7 @@ func renderDefaultFleetRefLine(opts scaffoldOptions) string {
 	if len(parseClusterScaffold(opts.Clusters)) == 0 {
 		return ""
 	}
-	return "  defaultFleetRef: " + opts.Name
+	return "  defaultFleet: " + opts.Name
 }
 
 func nextScaffoldVersion(opts scaffoldOptions) string {

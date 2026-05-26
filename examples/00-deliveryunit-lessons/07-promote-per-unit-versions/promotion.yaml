@@ -6,9 +6,9 @@ metadata:
     kapro.io/unit: hello-world
     kapro.io/team: tutorial
 spec:
-  deliveryUnitRef: hello-world
-  fleetRef: hello-world
-  planRef: hello-world
+  unit: hello-world
+  fleet: hello-world
+  plan: hello-world
   versions:
     web: 0.3.1
     worker: 0.3.2

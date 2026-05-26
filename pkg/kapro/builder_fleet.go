@@ -18,7 +18,7 @@ func NewFleet(name string) *FleetBuilder {
 	return &FleetBuilder{name: name}
 }
 
-// WithSubstrate sets spec.substrate.ref. The SDK leaves mode unset so the
+// WithSubstrate sets spec.delivery.ref. The SDK leaves mode unset so the
 // API defaulting/validation path remains the single source of truth.
 func (b *FleetBuilder) WithSubstrate(substrate string) *FleetBuilder {
 	b.substrate = substrate

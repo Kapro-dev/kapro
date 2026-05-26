@@ -35,8 +35,8 @@ spec:
       requireSignature: true
       pollInterval: 5m
   promotionTemplate:
-    deliveryUnitRef: checkout
-    fleetRef: checkout
+    unit: checkout
+    fleet: checkout
     nameTemplate: "checkout-cosign"
     plans:
       - name: production

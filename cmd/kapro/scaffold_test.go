@@ -44,9 +44,9 @@ func TestRunInitScaffoldArgo(t *testing.T) {
 	unit := readFile(t, filepath.Join(dir, "deliveryunits/checkout.yaml"))
 	for _, want := range []string{
 		"source:",
-		"defaultFleetRef: checkout",
-		"defaultPlanRef: checkout",
-		"substrateRef: argo",
+		"defaultFleet: checkout",
+		"defaultPlan: checkout",
+		"substrate: argo",
 		"kapro.io/team: platform",
 		"name: checkout",
 	} {
@@ -244,7 +244,7 @@ func TestRunInitScaffoldOCIPull(t *testing.T) {
 	for _, want := range []string{
 		"kind: Promotion",
 		"kapro.io/team: platform",
-		"fleetRef: checkout",
+		"fleet: checkout",
 		"version: 0.1.0",
 		"timeout: 30m",
 	} {
@@ -294,10 +294,10 @@ func TestRunInitScaffoldPublicPreviewContractForAllProfiles(t *testing.T) {
 			unit := readFile(t, filepath.Join(dir, "deliveryunits/checkout.yaml"))
 			for _, want := range []string{
 				"kind: DeliveryUnit",
-				"defaultFleetRef: checkout",
-				"defaultPlanRef: checkout",
+				"defaultFleet: checkout",
+				"defaultPlan: checkout",
 				"source:",
-				"substrateRef: " + tc.substrate,
+				"substrate: " + tc.substrate,
 				"kapro.io/team: platform",
 			} {
 				if !strings.Contains(unit, want) {
@@ -313,9 +313,9 @@ func TestRunInitScaffoldPublicPreviewContractForAllProfiles(t *testing.T) {
 			promotion := readFile(t, filepath.Join(dir, "promotions/checkout-promotion.yaml"))
 			for _, want := range []string{
 				"kind: Promotion",
-				"deliveryUnitRef: checkout",
-				"fleetRef: checkout",
-				"planRef: checkout",
+				"unit: checkout",
+				"fleet: checkout",
+				"plan: checkout",
 				"version:",
 				"timeout: 30m",
 			} {

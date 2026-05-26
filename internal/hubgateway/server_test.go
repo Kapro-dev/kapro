@@ -42,7 +42,7 @@ func TestGraphIncludesSubstrates(t *testing.T) {
 
 func TestCreatePromotion(t *testing.T) {
 	c := testClient(t)
-	body := bytes.NewBufferString(`{"name":"checkout-1","fleetRef":"checkout","version":"1.2.3","plans":[{"name":"main","plan":"checkout"}]}`)
+	body := bytes.NewBufferString(`{"name":"checkout-1","fleet":"checkout","version":"1.2.3","plans":[{"name":"main","plan":"checkout"}]}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/promotions", body)
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
@@ -223,7 +223,7 @@ func TestGraphMarksLimitedResponsesAsTruncated(t *testing.T) {
 
 func hubGatewaySubstrateSpec(kind string) kaprov1alpha1.SubstrateSpec {
 	return kaprov1alpha1.SubstrateSpec{
-		Substrate: &kaprov1alpha1.SubstrateImplementationSpec{Kind: kind, Actuator: kind},
+		ClassRef:  &kaprov1alpha1.SubstrateClassReference{Name: kind},
 		Execution: &kaprov1alpha1.SubstrateExecutionSpec{Mode: kaprov1alpha1.ExecutionModeSpokePull},
 	}
 }
@@ -256,7 +256,7 @@ func TestGraphRejectsUnknownResource(t *testing.T) {
 
 func TestCreatePromotionRejectsUnknownFields(t *testing.T) {
 	c := testClient(t)
-	body := bytes.NewBufferString(`{"name":"checkout-1","fleetRef":"checkout","version":"1.2.3","plans":[{"name":"main","plan":"checkout"}],"extra":true}`)
+	body := bytes.NewBufferString(`{"name":"checkout-1","fleet":"checkout","version":"1.2.3","plans":[{"name":"main","plan":"checkout"}],"extra":true}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/promotions", body)
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()

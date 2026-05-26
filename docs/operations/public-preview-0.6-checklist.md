@@ -1,6 +1,6 @@
 # Public Preview 0.6 Checklist
 
-Use this checklist before tagging `v0.6.0`. It turns the roadmap into concrete
+Use this checklist before tagging `v0.6.2`. It turns the roadmap into concrete
 release evidence.
 
 ## CLI Contract

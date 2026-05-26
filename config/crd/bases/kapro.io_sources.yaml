@@ -175,11 +175,11 @@ spec:
                   - url
                   type: object
                 type: array
-              substrateRef:
+              substrate:
                 description: |-
-                  SubstrateRef is the Substrate this source is normally discovered from
-                  or packaged for. Fleet uses it as metadata; delivery still comes from
-                  Fleet.spec.substrate and Cluster.spec.substrate.
+                  Substrate is the Substrate this source is normally discovered from or
+                  packaged for. Fleet uses it as metadata; delivery still comes from
+                  Fleet.spec.delivery and Cluster.spec.delivery.
                 type: string
               units:
                 description: Units defines the native deployable units DeliveryUnit/Promotion
@@ -243,8 +243,8 @@ spec:
                         to an existing object, for example Application, ApplicationSet,
                         Kustomization, or HelmRelease.
                       type: string
-                    suspend:
-                      description: Suspend pauses reconciliation for this unit.
+                    suspended:
+                      description: Suspended pauses reconciliation for this unit.
                       type: boolean
                     targetNamespace:
                       description: |-

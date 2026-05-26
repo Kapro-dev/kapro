@@ -198,18 +198,18 @@ still be invoked externally, but they are not conformant Kapro substrates.
 - ADR-0016 remains the implementation foundation. This ADR does not replace the
   class/config contract; it explains why that contract exists.
 - Reference substrates should continue to prove multiple families over time,
-  but the `0.6.0` launch set is intentionally narrow: `kubernetes-apply`,
+  but the `0.6.2` launch set is intentionally narrow: `kubernetes-apply`,
   `argo`, `flux`, and `oci`. Webhook/custom API delivery remains a valid
   substrate family after a concrete actuator, status model, and conformance
   profile exist; 0.6 should not ship empty webhook delivery CRDs.
-- OCI is intentionally included as the fourth `0.6.0` reference substrate
+- OCI is intentionally included as the fourth `0.6.2` reference substrate
   because it proves artifact-backed Gitless delivery and spoke-side execution.
   It is not a default dependency for direct Kubernetes apply, Helm rendering,
   or raw manifest delivery.
-- The `0.6.0` launch set must pass an internal Go substrate conformance suite.
+- The `0.6.2` launch set must pass an internal Go substrate conformance suite.
   A public `kapro substrate conformance <class>` CLI can follow in `0.7.x`
   after the reference contract has proved itself.
-- The `0.6.0` launch set is a transition state: KSI reference scenarios prove
+- The `0.6.2` launch set is a transition state: KSI reference scenarios prove
   the public substrate contract, KSP provider conformance proves spoke-side
   provider behavior where needed, and the current in-tree direct, Argo CD, Flux,
   and OCI runtime paths are still covered by actuator/controller tests until

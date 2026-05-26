@@ -19,10 +19,10 @@ spec:
   scope: Cluster
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .spec.defaultFleetRef
+    - jsonPath: .spec.defaultFleet
       name: Fleet
       type: string
-    - jsonPath: .spec.defaultPlanRef
+    - jsonPath: .spec.defaultPlan
       name: Plan
       type: string
     - jsonPath: .status.sourceRef
@@ -61,15 +61,15 @@ spec:
             description: DeliveryUnitSpec defines the durable app/workload delivery
               identity.
             properties:
-              defaultFleetRef:
+              defaultFleet:
                 description: |-
-                  DefaultFleetRef is used by CLI and derived triggers when a Promotion
-                  action does not explicitly pick a Fleet.
+                  DefaultFleet is used by CLI and derived triggers when a Promotion action
+                  does not explicitly pick a Fleet.
                 type: string
-              defaultPlanRef:
+              defaultPlan:
                 description: |-
-                  DefaultPlanRef is used by CLI and derived triggers when a Promotion
-                  action does not explicitly pick a Plan.
+                  DefaultPlan is used by CLI and derived triggers when a Promotion action
+                  does not explicitly pick a Plan.
                 type: string
               policies:
                 description: |-
@@ -205,11 +205,11 @@ spec:
                       - url
                       type: object
                     type: array
-                  substrateRef:
+                  substrate:
                     description: |-
-                      SubstrateRef is the Substrate this source is normally discovered from
-                      or packaged for. Fleet uses it as metadata; delivery still comes from
-                      Fleet.spec.substrate and Cluster.spec.substrate.
+                      Substrate is the Substrate this source is normally discovered from or
+                      packaged for. Fleet uses it as metadata; delivery still comes from
+                      Fleet.spec.delivery and Cluster.spec.delivery.
                     type: string
                   units:
                     description: Units defines the native deployable units DeliveryUnit/Promotion
@@ -273,8 +273,8 @@ spec:
                             to an existing object, for example Application, ApplicationSet,
                             Kustomization, or HelmRelease.
                           type: string
-                        suspend:
-                          description: Suspend pauses reconciliation for this unit.
+                        suspended:
+                          description: Suspended pauses reconciliation for this unit.
                           type: boolean
                         targetNamespace:
                           description: |-
@@ -371,10 +371,9 @@ spec:
                       description: DryRun records what would be promoted without creating
                         a Promotion.
                       type: boolean
-                    fleetRef:
-                      description: |-
-                        FleetRef overrides spec.defaultFleetRef for Promotions created by this
-                        trigger.
+                    fleet:
+                      description: Fleet overrides spec.defaultFleet for Promotions
+                        created by this trigger.
                       type: string
                     labels:
                       additionalProperties:
@@ -399,10 +398,9 @@ spec:
                         type: string
                       description: Parameters are copied to the derived Trigger.
                       type: object
-                    planRef:
-                      description: |-
-                        PlanRef overrides spec.defaultPlanRef for Promotions created by this
-                        trigger.
+                    plan:
+                      description: Plan overrides spec.defaultPlan for Promotions
+                        created by this trigger.
                       type: string
                     source:
                       description: Source configures where artifact changes are observed.

@@ -104,7 +104,7 @@ func (r *SubstrateReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	profile.Status.SkippedObjects = discovery.skipped
 	profile.Status.UnsupportedPatterns = discovery.unsupported
 	profile.Status.DiscoveryErrors = discovery.errors
-	if profile.Spec.Discovery != nil && profile.Spec.Discovery.Enabled {
+	if profile.Spec.Discovery.Active() {
 		profile.Status.LastDiscoveryTime = &now
 	} else {
 		profile.Status.LastDiscoveryTime = nil
@@ -123,7 +123,7 @@ func (r *SubstrateReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		LastTransitionTime: now,
 	})
 	r.setSubstrateClassConditions(ctx, &profile, now)
-	if profile.Spec.Discovery != nil && profile.Spec.Discovery.Enabled {
+	if profile.Spec.Discovery.Active() {
 		apimeta.SetStatusCondition(&profile.Status.Conditions, metav1.Condition{
 			Type:               "DiscoveryReady",
 			Status:             discovery.status,
@@ -151,7 +151,7 @@ func (r *SubstrateReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	if err := r.Status().Patch(ctx, &profile, patch); err != nil {
 		return ctrl.Result{}, fmt.Errorf("patch SubstrateProfile status: %w", err)
 	}
-	if profile.Spec.Discovery != nil && profile.Spec.Discovery.Enabled {
+	if profile.Spec.Discovery.Active() {
 		return ctrl.Result{RequeueAfter: substrateProfileDiscoveryRequeue}, nil
 	}
 	return ctrl.Result{}, nil
@@ -170,7 +170,7 @@ type substrateDiscoveryCounts struct {
 
 func (r *SubstrateReconciler) observeDiscovery(ctx context.Context, profile *kaprov1alpha1.Substrate) (substrateDiscoveryCounts, string, string) {
 	counts := substrateDiscoveryCounts{status: metav1.ConditionTrue}
-	if profile.Spec.Discovery == nil || !profile.Spec.Discovery.Enabled {
+	if !profile.Spec.Discovery.Active() {
 		return counts, "DiscoveryDisabled", "substrate discovery is disabled"
 	}
 	namespace := substrateDiscoveryNamespace(ctx, r.Client, profile)
@@ -429,27 +429,7 @@ func (r *SubstrateReconciler) profileReadiness(ctx context.Context, profile *kap
 	if profile.Spec.ClassRef != nil && profile.Spec.ClassRef.Name != "" {
 		return r.profileClassReadiness(ctx, profile)
 	}
-	kind := profile.Spec.SubstrateKind()
-	switch kind {
-	case string(kaprov1alpha1.SubstrateKindFlux), string(kaprov1alpha1.SubstrateKindArgo), string(kaprov1alpha1.SubstrateKindOCI):
-		return true, "BuiltInSubstrateReady", fmt.Sprintf("built-in %s substrate is available", kind)
-	case string(kaprov1alpha1.SubstrateKindExternal):
-		if profile.Spec.PluginRef == "" {
-			return false, "MissingPluginRef", "external substrate requires spec.pluginRef"
-		}
-		var reg kaprov1alpha1.Plugin
-		if err := r.Get(ctx, client.ObjectKey{Name: profile.Spec.PluginRef}, &reg); err != nil {
-			return false, "PluginRegistrationNotFound", err.Error()
-		}
-		if !reg.Status.Ready || reg.Status.ObservedGeneration != reg.Generation {
-			return false, "PluginRegistrationNotReady", fmt.Sprintf("plugin registration %q is not ready", profile.Spec.PluginRef)
-		}
-		return true, "ExternalSubstrateReady", fmt.Sprintf("external substrate plugin %q is ready", profile.Spec.PluginRef)
-	default:
-		// Open substrates are admitted before their actuator exists so GitOps
-		// users can commit Substrate YAML ahead of deploying plugin code.
-		return false, "ActuatorNotRegistered", fmt.Sprintf("substrate.kind=%s has no registered built-in actuator; create the actuator binding before promotion", kind)
-	}
+	return false, "MissingClassRef", "Substrate.spec.classRef.name is required"
 }
 
 func (r *SubstrateReconciler) profileClassReadiness(ctx context.Context, profile *kaprov1alpha1.Substrate) (bool, string, string) {
@@ -775,7 +755,7 @@ func (r *SubstrateReconciler) substrateProfilesForTypedConfig(ctx context.Contex
 }
 
 func (r *SubstrateReconciler) substrateProfileMatchesObject(ctx context.Context, profile *kaprov1alpha1.Substrate, obj client.Object) bool {
-	if profile.Spec.Discovery == nil || !profile.Spec.Discovery.Enabled {
+	if !profile.Spec.Discovery.Active() {
 		return false
 	}
 	gvk := obj.GetObjectKind().GroupVersionKind()

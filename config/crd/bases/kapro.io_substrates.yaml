@@ -22,9 +22,6 @@ spec:
     - jsonPath: .spec.classRef.name
       name: Class
       type: string
-    - jsonPath: .spec.substrate.kind
-      name: Substrate
-      type: string
     - jsonPath: .spec.execution.mode
       name: Execution
       type: string
@@ -61,7 +58,7 @@ spec:
           spec:
             description: |-
               SubstrateSpec registers a delivery substrate profile that can be selected
-              by Fleet or Cluster spec.substrate.ref.
+              by Fleet or Cluster spec.delivery.ref.
             properties:
               classRef:
                 description: |-
@@ -112,9 +109,6 @@ spec:
                   Discovery configures optional adoption of objects already owned by the
                   substrate, for example Argo CD cluster Secrets and Applications.
                 properties:
-                  enabled:
-                    description: Enabled turns on substrate-native discovery.
-                    type: boolean
                   managementPolicy:
                     default: Observe
                     description: |-
@@ -182,6 +176,11 @@ spec:
                         type: object
                     type: object
                     x-kubernetes-map-type: atomic
+                  suspended:
+                    description: |-
+                      Suspended pauses substrate-native discovery. When the discovery block is
+                      present and suspended is false, discovery is active.
+                    type: boolean
                 type: object
               execution:
                 description: Execution selects the delivery topology for this substrate
@@ -206,38 +205,15 @@ spec:
                   configs unless overridden there.
                 type: object
               pluginRef:
-                description: PluginRef references a Plugin when substrate.kind=external.
+                description: PluginRef references a Plugin for external substrate
+                  implementations.
                 type: string
-              substrate:
-                description: Substrate identifies the open delivery domain and actuator
-                  implementation.
-                properties:
-                  actuator:
-                    description: |-
-                      Actuator names the concrete Kapro actuator/plugin implementation. When
-                      empty on an open-substrate manifest, Kapro falls back to kind.
-                    maxLength: 63
-                    pattern: ^[a-z][a-z0-9-]{0,62}$
-                    type: string
-                  kind:
-                    description: Kind is the open delivery domain/category.
-                    maxLength: 63
-                    pattern: ^[a-z][a-z0-9-]{0,62}$
-                    type: string
-                required:
-                - kind
-                type: object
             type: object
             x-kubernetes-validations:
-            - message: set either classRef or substrate, not both
-              rule: '!(has(self.classRef) && has(self.substrate))'
             - message: configRef requires classRef
               rule: '!has(self.configRef) || has(self.classRef)'
-            - message: one of classRef or substrate is required
-              rule: has(self.substrate) || has(self.classRef)
-            - message: pluginRef must be set when substrate.kind is external
-              rule: '(has(self.substrate) && self.substrate.kind == "external") ?
-                (has(self.pluginRef) && self.pluginRef != "") : true'
+            - message: classRef is required
+              rule: has(self.classRef)
           status:
             description: SubstrateStatus records substrate discovery and compatibility.
             properties:

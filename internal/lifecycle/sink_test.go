@@ -116,7 +116,7 @@ func TestSinkReceivesCloudEventsForEveryTransition(t *testing.T) {
 			t.Fatalf("specversion = %q, want 1.0", env.SpecVersion)
 		}
 		if env.Data.FleetRef != "checkout-fleet" {
-			t.Fatalf("data.fleetRef = %q", env.Data.FleetRef)
+			t.Fatalf("data.fleet = %q", env.Data.FleetRef)
 		}
 		gotTypes[env.Type]++
 	}

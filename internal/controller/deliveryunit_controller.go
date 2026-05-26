@@ -173,7 +173,7 @@ func derivedTrigger(unit *kaprov1alpha1.DeliveryUnit, trigger kaprov1alpha1.Deli
 	name := unit.Name + "-" + suffix
 	fleetRef := firstNonEmpty(trigger.FleetRef, unit.Spec.DefaultFleetRef)
 	if fleetRef == "" {
-		return kaprov1alpha1.TriggerSpec{}, name, fmt.Errorf("deliveryunit %s trigger %s requires fleetRef or spec.defaultFleetRef", unit.Name, suffix)
+		return kaprov1alpha1.TriggerSpec{}, name, fmt.Errorf("deliveryunit %s trigger %s requires fleet or spec.defaultFleet", unit.Name, suffix)
 	}
 	planRef := firstNonEmpty(trigger.PlanRef, unit.Spec.DefaultPlanRef)
 	labels := copyStringMap(unit.Labels)

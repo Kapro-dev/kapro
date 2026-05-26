@@ -4,7 +4,7 @@ Use this path when spokes should pull OCI artifacts directly with Kapro's
 spoke-side OCI delivery core, without requiring Flux or Argo CD on the spoke.
 
 Artifact input: an OCI bundle artifact must exist in the registry path used by
-`spec.substrate.parameters.repository`.
+`spec.delivery.parameters.repository`.
 
 ```bash
 git clone --branch main https://github.com/Kapro-dev/kapro.git
@@ -23,7 +23,7 @@ kubectl get promotions.kapro.io,promotionruns.runtime.kapro.io,targets.runtime.k
 ```
 
 The example uses anonymous `ghcr.io/example/...` placeholders. Replace
-`spec.substrate.parameters.repository` and registry settings with registries
+`spec.delivery.parameters.repository` and registry settings with registries
 your spokes can reach.
 
 For local Kind testing, change repository placeholders to the local registry:
@@ -36,7 +36,7 @@ kapro-registry:5000 from inside the Kind network
 OCI fields have different jobs:
 
 - `DeliveryUnit.spec.source.registries` is where chart or source units come from.
-- `substrate.parameters.repository` is what spoke-side OCI delivery pulls.
+- `delivery.parameters.repository` is what spoke-side OCI delivery pulls.
 
 ## Run This Example
 

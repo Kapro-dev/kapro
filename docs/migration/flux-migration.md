@@ -124,7 +124,7 @@ metadata:
   name: checkout
 spec:
   source:
-    substrateRef: checkout
+    substrate: checkout
     units:
       - name: api
         substrateKind: GitYAMLField
@@ -170,9 +170,9 @@ kind: Promotion
 metadata:
   name: checkout-2026-05-15
 spec:
-  deliveryUnitRef: checkout
-  fleetRef: checkout
-  planRef: checkout
+  unit: checkout
+  fleet: checkout
+  plan: checkout
   versions:
     api: 1.5.0
     web: main-20260515

@@ -160,7 +160,7 @@ func seedReadyFluxSubstrate(t *testing.T, ctx context.Context, c client.Client) 
 	substrate := &kaprov1alpha1.Substrate{
 		ObjectMeta: metav1.ObjectMeta{Name: "flux"},
 		Spec: kaprov1alpha1.SubstrateSpec{
-			Substrate: &kaprov1alpha1.SubstrateImplementationSpec{Kind: "flux", Actuator: "flux"},
+			ClassRef:  &kaprov1alpha1.SubstrateClassReference{Name: "flux"},
 			Execution: &kaprov1alpha1.SubstrateExecutionSpec{Mode: kaprov1alpha1.ExecutionModeSpokePull},
 		},
 	}
@@ -250,7 +250,7 @@ func makeFleetCluster(name string, labels map[string]string) *kaprov1alpha1.Clus
 		ObjectMeta: metav1.ObjectMeta{Name: name, Labels: labels},
 		Spec: kaprov1alpha1.ClusterSpec{
 			Substrate: kaprov1alpha1.SubstrateBindingSpec{
-				Mode: "pull", SubstrateRef: "flux",
+				Mode: "pull", Ref: "flux",
 				Parameters: map[string]string{
 					"namespace":     "flux-system",
 					"ociRepository": "test-repo",

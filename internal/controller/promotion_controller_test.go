@@ -47,7 +47,7 @@ func newKapro(name string) *kaprov1alpha1.Fleet {
 		ObjectMeta: metav1.ObjectMeta{Name: name},
 		Spec: kaprov1alpha1.FleetSpec{
 			SourceRef: "shared-catalog",
-			Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: "pull", SubstrateRef: "flux"},
+			Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: "pull", Ref: "flux"},
 			Clusters: []kaprov1alpha1.ClusterRef{
 				{Name: "c1", Labels: map[string]string{"stage": "prod"}},
 			},
@@ -730,7 +730,7 @@ func TestPromotionReconcilerInvokesLifecycleDispatcher(t *testing.T) {
 // kapro.io/promotion + kapro.io/promotion-spec-hash labels) must have
 // kapro.io/kapro and kapro.io/promotion-uid patched in when the new
 // stampAttempt path hits AlreadyExists. Without this, wave/stage/gate
-// CloudEvents would emit empty data.fleetRef / data.promotionUID
+// CloudEvents would emit empty data.fleet / data.promotionUID
 // during an in-flight attempt that crossed the upgrade boundary.
 func TestBackfillRunLabelsOnAlreadyExists(t *testing.T) {
 	ctx := context.Background()

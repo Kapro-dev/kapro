@@ -54,9 +54,9 @@ exact patch release has a real feature scope.
 This sequence turns ADR-0017 into shippable work. It is a planning order, not a
 promise that every item maps one-to-one to a GitHub milestone. When work is
 promoted to a milestone, use exact patch versions such as `v0.5.11` or
-`v0.6.1`.
+`v0.6.2`.
 
-1. **Lock the public-preview scope.** `0.6.0` is GitOps Bootstrap Preview:
+1. **Lock the public-preview scope.** `0.6.2` is GitOps Bootstrap Preview:
    direct delivery, Argo CD, Flux, new repo generation, and existing GitOps
    connect/adopt flows. ADR-0017's "any substrate" vision remains long-term
    positioning, not the first public release promise.
@@ -68,10 +68,10 @@ promoted to a milestone, use exact patch versions such as `v0.5.11` or
 3. **Stabilize the class/config contract.** Finish docs, examples,
    controller status, RBAC, migration guidance, and conformance checks around
    `SubstrateClass`, `Substrate.spec.classRef`, and `Substrate.spec.configRef`.
-   `docs/specs/substrate-parameter-spec.md` must ship publicly in `0.6.0` as
+   `docs/specs/substrate-parameter-spec.md` must ship publicly in `0.6.2` as
    the `v1alpha1` author contract, with breaking changes still allowed while
    the surface remains alpha.
-4. **Prove launch substrate families.** Keep the `0.6.0` reference set focused
+4. **Prove launch substrate families.** Keep the `0.6.2` reference set focused
    on `kubernetes-apply`, `argo`, `flux`, and `oci`. Webhook/custom API
    delivery stays valid future work, but 0.6 must not ship empty webhook
    delivery CRDs.
@@ -94,7 +94,7 @@ promoted to a milestone, use exact patch versions such as `v0.5.11` or
    packages.
 9. **Implement `tekton` as the first pipeline substrate.** Use Tekton to prove
    the `pipeline` family with Kubernetes-native CRDs and controller
-   reconciliation after `0.6.0`.
+   reconciliation after `0.6.2`.
 10. **Implement `gitlab-pipeline` as the first external pipeline substrate.**
    Use GitLab CI/CD to prove Git-backed external pipeline delivery with API
    triggering, run observation, and evidence capture after Tekton.
@@ -102,7 +102,7 @@ promoted to a milestone, use exact patch versions such as `v0.5.11` or
    `platform` or `direct` substrate for fleet add-on/application delivery after
    the default Kapro-native path is stable. Do not copy Sveltos into Kapro
    core.
-12. **Open the third-party substrate path.** In `0.6.0`, ship the internal Go
+12. **Open the third-party substrate path.** In `0.6.2`, ship the internal Go
    conformance suite and reference class scenarios for `kubernetes-apply`,
    `argo`, and `flux`. Promote it to a public
    `kapro substrate conformance <class>` CLI in `0.7.x` after the launch
@@ -137,9 +137,9 @@ The first public preview should ship a focused matrix:
 | `oci` | OCI artifact reference | `SubstrateClass`, `Substrate`, `Cluster`, `Fleet`, `Plan`, `Promotion` |
 
 Additional app templates are allowed after the canonical four pass smoke tests.
-Do not create the full profile x app-template cross-product before `0.6.0`.
+Do not create the full profile x app-template cross-product before `0.6.2`.
 
-The substrate conformance suite is part of `0.6.0`, even if the public
+The substrate conformance suite is part of `0.6.2`, even if the public
 `kapro substrate conformance <class>` wrapper is not. The `kapro-conformance
 all` reference run includes the four launch classes; runtime delivery remains
 covered by direct, Argo CD, Flux, and OCI actuator/controller tests until
@@ -161,7 +161,7 @@ such as `kapro bootstrap diff` or `kapro bootstrap upgrade` is Phase 2.
 
 ## Public Preview Success Criteria
 
-`0.6.0` is ready only when:
+`0.6.2` is ready only when:
 
 - `direct`, `argo`, `flux`, and `oci` profiles each have an end-to-end demo that
   runs `init -> generate -> plan -> promote dev -> stage -> prod` on kind.
@@ -190,7 +190,7 @@ such as `kapro bootstrap diff` or `kapro bootstrap upgrade` is Phase 2.
 
 These are tracked follow-ups, not launch blockers:
 
-- Generalize `Cluster.spec.substrate.parameters` validation through
+- Generalize `Cluster.spec.delivery.parameters` validation through
   `SubstrateClass`/typed config metadata instead of adding substrate-specific
   webhook cases for every future class.
 - Add a file-based `kapro migrate v0.5 v0.6 <path>` rewriter for internal
@@ -268,7 +268,7 @@ pipeline, platform, and custom API substrates. The pipeline-specific roadmap is:
 
 ## Partnerships And Phase 2
 
-Kubara integration is strategically useful but must not block `0.6.0`. Treat it
+Kubara integration is strategically useful but must not block `0.6.2`. Treat it
 as a Phase 2 partnership path:
 
 - Kubara bootstraps the GitOps platform.

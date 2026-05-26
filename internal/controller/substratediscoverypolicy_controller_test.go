@@ -35,7 +35,7 @@ func TestSubstrateDiscoveryPolicyReconcilerRecordsDiscoveryResult(t *testing.T) 
 			},
 			Spec: adapterPolicySubstrateSpec("argo", kaprov1alpha1.ExecutionModeHubPush,
 				withDiscovery(&kaprov1alpha1.SubstrateDiscoverySpec{
-					Enabled:    true,
+					Suspended:  false,
 					MaxObjects: 50,
 					Selector:   &metav1.LabelSelector{MatchLabels: map[string]string{"kapro.io/import": "true"}},
 				}),
@@ -145,7 +145,7 @@ func TestSubstrateDiscoveryPolicyReconcilerUsesTypedConfigNamespace(t *testing.T
 					Name:       "checkout",
 				},
 				Execution:  &kaprov1alpha1.SubstrateExecutionSpec{Mode: kaprov1alpha1.ExecutionModeHubPush},
-				Discovery:  &kaprov1alpha1.SubstrateDiscoverySpec{Enabled: true},
+				Discovery:  &kaprov1alpha1.SubstrateDiscoverySpec{Suspended: false},
 				Parameters: map[string]string{"namespace": "wrong-namespace"},
 			},
 		},
@@ -192,7 +192,7 @@ func TestSubstrateDiscoveryPolicyReconcilerMirrorsSubstrateDiscoveryStatusWithou
 				}},
 			},
 			Spec: adapterPolicySubstrateSpec("argo", kaprov1alpha1.ExecutionModeHubPush,
-				withDiscovery(&kaprov1alpha1.SubstrateDiscoverySpec{Enabled: true}),
+				withDiscovery(&kaprov1alpha1.SubstrateDiscoverySpec{Suspended: false}),
 			),
 		},
 		&kaprov1alpha1.SubstrateDiscoveryPolicy{
@@ -234,7 +234,7 @@ func TestSubstrateDiscoveryPolicyReconcilerDryRunSkipsAdapterDiscovery(t *testin
 		&kaprov1alpha1.Substrate{
 			ObjectMeta: metav1.ObjectMeta{Name: "argo"},
 			Spec: adapterPolicySubstrateSpec("argo", kaprov1alpha1.ExecutionModeHubPush,
-				withDiscovery(&kaprov1alpha1.SubstrateDiscoverySpec{Enabled: true}),
+				withDiscovery(&kaprov1alpha1.SubstrateDiscoverySpec{Suspended: false}),
 			),
 		},
 		&kaprov1alpha1.SubstrateDiscoveryPolicy{
@@ -277,7 +277,7 @@ func TestSubstrateDiscoveryPolicyReconcilerDryRunValidatesAdapterAndSelector(t *
 		&kaprov1alpha1.Substrate{
 			ObjectMeta: metav1.ObjectMeta{Name: "argo"},
 			Spec: adapterPolicySubstrateSpec("argo", kaprov1alpha1.ExecutionModeHubPush,
-				withDiscovery(&kaprov1alpha1.SubstrateDiscoverySpec{Enabled: true}),
+				withDiscovery(&kaprov1alpha1.SubstrateDiscoverySpec{Suspended: false}),
 			),
 		},
 		&kaprov1alpha1.SubstrateDiscoveryPolicy{
@@ -322,8 +322,8 @@ func TestSubstrateDiscoveryPolicyReconcilerAndsSelectorConflicts(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "external"},
 			Spec: adapterPolicySubstrateSpec("external", kaprov1alpha1.ExecutionModeExternalPull,
 				withDiscovery(&kaprov1alpha1.SubstrateDiscoverySpec{
-					Enabled:  true,
-					Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"team": "payments"}},
+					Suspended: false,
+					Selector:  &metav1.LabelSelector{MatchLabels: map[string]string{"team": "payments"}},
 				}),
 			),
 		},
@@ -403,7 +403,7 @@ func TestSubstrateDiscoveryPolicyReconcilerReportsSubstrateKindMismatch(t *testi
 		&kaprov1alpha1.Substrate{
 			ObjectMeta: metav1.ObjectMeta{Name: "argo"},
 			Spec: adapterPolicySubstrateSpec("argo", kaprov1alpha1.ExecutionModeHubPush,
-				withDiscovery(&kaprov1alpha1.SubstrateDiscoverySpec{Enabled: true}),
+				withDiscovery(&kaprov1alpha1.SubstrateDiscoverySpec{Suspended: false}),
 			),
 		},
 		&kaprov1alpha1.SubstrateDiscoveryPolicy{
@@ -435,7 +435,7 @@ func TestSubstrateDiscoveryPolicyReconcilerReportsDiscoveryError(t *testing.T) {
 		&kaprov1alpha1.Substrate{
 			ObjectMeta: metav1.ObjectMeta{Name: "external"},
 			Spec: adapterPolicySubstrateSpec("external", kaprov1alpha1.ExecutionModeExternalPull,
-				withDiscovery(&kaprov1alpha1.SubstrateDiscoverySpec{Enabled: true}),
+				withDiscovery(&kaprov1alpha1.SubstrateDiscoverySpec{Suspended: false}),
 			),
 		},
 		&kaprov1alpha1.SubstrateDiscoveryPolicy{
@@ -507,7 +507,7 @@ func adapterPolicyClient(t *testing.T, objects ...client.Object) client.Client {
 
 func adapterPolicySubstrateSpec(kind string, mode kaprov1alpha1.ExecutionMode, opts ...func(*kaprov1alpha1.SubstrateSpec)) kaprov1alpha1.SubstrateSpec {
 	spec := kaprov1alpha1.SubstrateSpec{
-		Substrate: &kaprov1alpha1.SubstrateImplementationSpec{Kind: kind, Actuator: kind},
+		ClassRef:  &kaprov1alpha1.SubstrateClassReference{Name: kind},
 		Execution: &kaprov1alpha1.SubstrateExecutionSpec{Mode: mode},
 	}
 	for _, opt := range opts {

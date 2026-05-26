@@ -767,7 +767,7 @@ metadata:
     kapro.io/managed-by: kapro
 spec:
   source:
-    substrateRef: %s
+    substrate: %s
     units:
 `, opts.Name, opts.Name, opts.Name)
 	for _, unit := range result.SelectedUnits {
@@ -830,7 +830,7 @@ func renderArgoGitAdoptionMap(opts argoDiscoverOptions, result argoDiscoveryResu
 	fmt.Fprintf(&b, `schemaVersion: kapro.io/git-adoption/v1alpha1
 name: %s
 repoPath: %s
-deliveryUnitRef: %s
+unit: %s
 units:
 `, opts.Name, result.RepoPath, opts.Name)
 	if len(result.SelectedUnits) == 0 {

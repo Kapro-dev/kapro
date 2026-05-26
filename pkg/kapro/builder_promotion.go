@@ -16,7 +16,7 @@ func NewPromotion(name string) *PromotionBuilder {
 	return &PromotionBuilder{name: name}
 }
 
-// ForFleet sets spec.fleetRef.
+// ForFleet sets spec.fleet.
 func (b *PromotionBuilder) ForFleet(fleetRef string) *PromotionBuilder {
 	b.fleetRef = fleetRef
 	return b

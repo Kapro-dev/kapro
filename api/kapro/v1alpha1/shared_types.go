@@ -1,4 +1,4 @@
-// Shared cross-domain types: cluster topology, substrate binding, and
+// Shared cross-domain types: cluster topology, delivery binding, and
 // substrate-neutral execution settings consumed by Cluster and Fleet.
 package v1alpha1
 
@@ -164,22 +164,17 @@ type SubstrateObjectReference struct {
 	Namespace string `json:"namespace,omitempty"`
 }
 
-// SubstrateBindingSpec selects a substrate-neutral execution profile for a
+// SubstrateBindingSpec selects a substrate-neutral delivery profile for a
 // cluster or fleet. Substrate-specific resource names live in parameters and
 // are interpreted only by the selected substrate adapter.
-// +kubebuilder:validation:XValidation:rule="(has(self.ref) && self.ref != \"\") || (has(self.substrateRef) && self.substrateRef != \"\")",message="spec.substrate.ref is required"
-// +kubebuilder:validation:XValidation:rule="!((has(self.ref) && self.ref != \"\") && (has(self.substrateRef) && self.substrateRef != \"\")) || self.ref == self.substrateRef",message="spec.substrate.ref and deprecated spec.substrate.substrateRef must match when both are set"
+// +kubebuilder:validation:XValidation:rule="has(self.ref) && self.ref != \"\"",message="delivery.ref is required"
 type SubstrateBindingSpec struct {
 	// Mode controls where substrate execution happens.
 	// +kubebuilder:default="pull"
 	Mode SubstrateMode `json:"mode"`
 	// Ref is the Substrate name. Built-in profiles commonly use "flux" or
 	// "argo"; external profiles may use any platform-defined name.
-	Ref string `json:"ref,omitempty"`
-	// SubstrateRef is the deprecated spelling of Ref.
-	// Deprecated: use ref.
-	// +optional
-	SubstrateRef string `json:"substrateRef,omitempty"`
+	Ref string `json:"ref"`
 	// Staging declares optional pre-commit safety semantics for substrates that
 	// support staging. When omitted, existing substrate defaults are preserved.
 	// The built-in OCI pull substrate already uses TwoPhase/Abort behavior.
@@ -199,16 +194,12 @@ func (d *SubstrateBindingSpec) RegistryKey() string {
 	return string(d.Mode) + "/" + d.SubstrateName()
 }
 
-// SubstrateName returns the selected Substrate name, accepting the deprecated
-// substrateRef field for v0.6.x manifest compatibility.
+// SubstrateName returns the selected Substrate name.
 func (d *SubstrateBindingSpec) SubstrateName() string {
 	if d == nil {
 		return ""
 	}
-	if d.Ref != "" {
-		return d.Ref
-	}
-	return d.SubstrateRef
+	return d.Ref
 }
 
 // SetSubstrateName writes the current public spelling used by generated
@@ -218,7 +209,6 @@ func (d *SubstrateBindingSpec) SetSubstrateName(name string) {
 		return
 	}
 	d.Ref = name
-	d.SubstrateRef = ""
 }
 
 // Param returns a substrate-specific parameter with a default.

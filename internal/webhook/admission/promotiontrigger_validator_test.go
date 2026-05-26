@@ -85,7 +85,7 @@ func TestValidatePromotionTrigger_TemplateMissingFleetRef(t *testing.T) {
 	pt := validTrigger()
 	pt.Spec.PromotionTemplate.FleetRef = ""
 	if err := validatePromotionTrigger(pt); err == nil {
-		t.Fatal("expected error for missing fleetRef")
+		t.Fatal("expected error for missing fleet")
 	}
 }
 
@@ -93,7 +93,7 @@ func TestValidatePromotionTrigger_TemplateMissingDeliveryUnitRef(t *testing.T) {
 	pt := validTrigger()
 	pt.Spec.PromotionTemplate.DeliveryUnitRef = ""
 	if err := validatePromotionTrigger(pt); err == nil {
-		t.Fatal("expected error for missing deliveryUnitRef")
+		t.Fatal("expected error for missing unit")
 	}
 }
 

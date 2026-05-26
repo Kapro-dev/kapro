@@ -16,10 +16,10 @@ The SDK is deliberately thin:
 go get kapro.io/kapro@main
 ```
 
-After `v0.6.0` is tagged, use the release tag instead:
+After `v0.6.2` is tagged, use the release tag instead:
 
 ```bash
-go get kapro.io/kapro@v0.6.0
+go get kapro.io/kapro@v0.6.2
 ```
 
 ## Build a Promotion

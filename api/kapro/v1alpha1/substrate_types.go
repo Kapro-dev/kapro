@@ -9,28 +9,22 @@ import (
 // ---- Substrate ---------------------------------------------------------
 
 // SubstrateSpec registers a delivery substrate profile that can be selected
-// by Fleet or Cluster spec.substrate.ref.
-// +kubebuilder:validation:XValidation:rule="!(has(self.classRef) && has(self.substrate))",message="set either classRef or substrate, not both"
+// by Fleet or Cluster spec.delivery.ref.
 // +kubebuilder:validation:XValidation:rule="!has(self.configRef) || has(self.classRef)",message="configRef requires classRef"
-// +kubebuilder:validation:XValidation:rule="has(self.substrate) || has(self.classRef)",message="one of classRef or substrate is required"
-// +kubebuilder:validation:XValidation:rule="(has(self.substrate) && self.substrate.kind == \"external\") ? (has(self.pluginRef) && self.pluginRef != \"\") : true",message="pluginRef must be set when substrate.kind is external"
+// +kubebuilder:validation:XValidation:rule="has(self.classRef)",message="classRef is required"
 type SubstrateSpec struct {
 	// ClassRef selects the SubstrateClass that owns the typed substrate config
 	// contract for this substrate profile.
-	// +optional
 	ClassRef *SubstrateClassReference `json:"classRef,omitempty"`
 	// ConfigRef points at a typed substrate-owned configuration object, such as
 	// ArgoCDSubstrateConfig, KubernetesApplyConfig, or OCIBundleApplyConfig.
 	// The referenced kind must be accepted by the selected SubstrateClass.
 	// +optional
 	ConfigRef *SubstrateObjectReference `json:"configRef,omitempty"`
-	// Substrate identifies the open delivery domain and actuator implementation.
-	// +optional
-	Substrate *SubstrateImplementationSpec `json:"substrate,omitempty"`
 	// Execution selects the delivery topology for this substrate profile.
 	// +optional
 	Execution *SubstrateExecutionSpec `json:"execution,omitempty"`
-	// PluginRef references a Plugin when substrate.kind=external.
+	// PluginRef references a Plugin for external substrate implementations.
 	// +optional
 	PluginRef string `json:"pluginRef,omitempty"`
 	// Discovery configures optional adoption of objects already owned by the
@@ -45,9 +39,10 @@ type SubstrateSpec struct {
 
 // SubstrateDiscoverySpec configures substrate-native discovery for migration.
 type SubstrateDiscoverySpec struct {
-	// Enabled turns on substrate-native discovery.
+	// Suspended pauses substrate-native discovery. When the discovery block is
+	// present and suspended is false, discovery is active.
 	// +optional
-	Enabled bool `json:"enabled,omitempty"`
+	Suspended bool `json:"suspended,omitempty"`
 	// ManagementPolicy controls whether Fleet only observes discovered objects
 	// or may adopt them for promotion writes.
 	// +kubebuilder:validation:Enum=Observe;Adopt
@@ -66,6 +61,11 @@ type SubstrateDiscoverySpec struct {
 	// +kubebuilder:default=1000
 	// +optional
 	MaxObjects int32 `json:"maxObjects,omitempty"`
+}
+
+// Active reports whether substrate-native discovery should run.
+func (d *SubstrateDiscoverySpec) Active() bool {
+	return d != nil && !d.Suspended
 }
 
 // SubstrateStatus records substrate discovery and compatibility.
@@ -153,7 +153,6 @@ type DiscoveredSubstrateObject struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster,shortName=sub,categories=kapro-all
 // +kubebuilder:printcolumn:name="Class",type=string,JSONPath=`.spec.classRef.name`
-// +kubebuilder:printcolumn:name="Substrate",type=string,JSONPath=`.spec.substrate.kind`
 // +kubebuilder:printcolumn:name="Execution",type=string,JSONPath=`.spec.execution.mode`
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
@@ -176,9 +175,6 @@ type SubstrateList struct {
 
 // SubstrateKind returns the canonical delivery domain for this Substrate.
 func (s SubstrateSpec) SubstrateKind() string {
-	if s.Substrate != nil && s.Substrate.Kind != "" {
-		return s.Substrate.Kind
-	}
 	if s.ClassRef != nil && s.ClassRef.Name != "" {
 		return s.ClassRef.Name
 	}
@@ -187,9 +183,6 @@ func (s SubstrateSpec) SubstrateKind() string {
 
 // ActuatorName returns the canonical actuator implementation name.
 func (s SubstrateSpec) ActuatorName() string {
-	if s.Substrate != nil && s.Substrate.Actuator != "" {
-		return s.Substrate.Actuator
-	}
 	return s.SubstrateKind()
 }
 

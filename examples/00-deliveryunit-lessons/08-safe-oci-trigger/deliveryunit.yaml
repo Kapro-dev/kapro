@@ -6,10 +6,10 @@ metadata:
     kapro.io/unit: hello-world
     kapro.io/team: tutorial
 spec:
-  defaultFleetRef: hello-world
-  defaultPlanRef: hello-world
+  defaultFleet: hello-world
+  defaultPlan: hello-world
   source:
-    substrateRef: oci
+    substrate: oci
     units:
       - name: web
         substrateKind: OCIBundle

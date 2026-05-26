@@ -26,7 +26,7 @@ func substrateProfile(name string, driver kaprov1alpha1.SubstrateKind, ready boo
 	p := &kaprov1alpha1.Substrate{
 		ObjectMeta: metav1.ObjectMeta{Name: name},
 		Spec: kaprov1alpha1.SubstrateSpec{
-			Substrate: &kaprov1alpha1.SubstrateImplementationSpec{Kind: string(driver), Actuator: string(driver)},
+			ClassRef:  &kaprov1alpha1.SubstrateClassReference{Name: string(driver)},
 			Execution: &kaprov1alpha1.SubstrateExecutionSpec{Mode: kaprov1alpha1.ExecutionModeSpokePull},
 		},
 		Status: kaprov1alpha1.SubstrateStatus{Ready: ready},

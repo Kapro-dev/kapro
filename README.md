@@ -154,7 +154,7 @@ Install these tools first:
 Run the smallest example:
 
 ```bash
-KAPRO_VERSION=0.6.0
+KAPRO_VERSION=0.6.2
 
 kind create cluster --name kapro-hello
 kubectl config use-context kind-kapro-hello
@@ -192,7 +192,7 @@ Install the released operator, apply the starter fleet from a source clone, and
 inspect the controller-owned runtime records:
 
 ```bash
-KAPRO_VERSION=0.6.0
+KAPRO_VERSION=0.6.2
 git clone --branch "v${KAPRO_VERSION}" https://github.com/Kapro-dev/kapro.git
 cd kapro
 helm upgrade --install kapro \

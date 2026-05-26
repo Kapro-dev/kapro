@@ -5,7 +5,7 @@ metadata:
   labels:
     kapro.io/stage: canary
 spec:
-  substrate:
+  delivery:
     mode: push
     ref: direct
     parameters:

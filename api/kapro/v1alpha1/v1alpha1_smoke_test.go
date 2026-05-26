@@ -89,18 +89,18 @@ func TestFleetRoundTripsThroughYAML(t *testing.T) {
 		t.Errorf("name lost across round-trip: %q", out.Name)
 	}
 	if out.Spec.Substrate.Ref != "flux" {
-		t.Errorf("substrate.ref lost across round-trip: %q", out.Spec.Substrate.Ref)
+		t.Errorf("delivery.ref lost across round-trip: %q", out.Spec.Substrate.Ref)
 	}
 }
 
-func TestSubstrateBindingAcceptsDeprecatedSubstrateRef(t *testing.T) {
+func TestSubstrateBindingUsesDeliveryRef(t *testing.T) {
 	in := &Fleet{
 		TypeMeta:   metav1.TypeMeta{APIVersion: "kapro.io/v1alpha1", Kind: "Fleet"},
 		ObjectMeta: metav1.ObjectMeta{Name: "checkout"},
 		Spec: FleetSpec{
 			Substrate: SubstrateBindingSpec{
-				Mode:         "pull",
-				SubstrateRef: "flux",
+				Mode: "pull",
+				Ref:  "flux",
 			},
 		},
 	}
@@ -113,7 +113,7 @@ func TestSubstrateBindingAcceptsDeprecatedSubstrateRef(t *testing.T) {
 		t.Fatalf("Unmarshal: %v", err)
 	}
 	if out.Spec.Substrate.SubstrateName() != "flux" {
-		t.Errorf("deprecated substrateRef did not resolve: %#v", out.Spec.Substrate)
+		t.Errorf("delivery ref did not resolve: %#v", out.Spec.Substrate)
 	}
 }
 
