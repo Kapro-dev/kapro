@@ -28,18 +28,26 @@ jobs:
     timeout-minutes: 25
     if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && startsWith(github.event.workflow_run.head_branch, 'v'))
     steps:
-      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - name: Checkout public source
+        env:
+          WORKFLOW_RUN_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          set -euo pipefail
+          git init .
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_run" ] && [ -n "${WORKFLOW_RUN_HEAD_BRANCH}" ]; then
+            ref="refs/tags/${WORKFLOW_RUN_HEAD_BRANCH}"
+          else
+            ref="${GITHUB_REF}"
+          fi
+          git -c protocol.version=2 fetch --no-tags --depth=1 origin "+${ref}:refs/remotes/origin/checkout"
+          git checkout --force --detach refs/remotes/origin/checkout
+          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
 
-      - name: Set up Helm
-        uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # v5.0.0
-
-      - name: Set up kubectl
-        uses: azure/setup-kubectl@15650b3ad78fff148532a140b8a4c821796b2d7b # v5.0.0
-
-      - name: Set up kind
-        uses: helm/kind-action@92086f6be054225fa813e0a4b13787fc9088faab # v1.13.0
-        with:
-          install_only: true
+      - name: Set up Helm, kubectl, and kind
+        env:
+          CI_SETUP_KIND: "true"
+        run: scripts/ci-setup-tools.sh
 
       - name: Create fresh Kind cluster
         env:
@@ -101,10 +109,3 @@ jobs:
           kubectl --context kind-kapro-release-install get crd -o wide > release-install-diagnostics/crds.txt || true
           kubectl --context kind-kapro-release-install get substrates.kapro.io,fleets.kapro.io,clusters.kapro.io,plans.kapro.io,promotions.kapro.io,promotionruns.runtime.kapro.io,targets.runtime.kapro.io -A -o yaml > release-install-diagnostics/kapro-resources.yaml || true
           kubectl --context kind-kapro-release-install -n kapro-system logs deploy/kapro-kapro-operator --tail=-1 > release-install-diagnostics/operator.log || true
-
-      - name: Upload diagnostics
-        if: failure()
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
-        with:
-          name: release-install-diagnostics
-          path: release-install-diagnostics/

@@ -95,11 +95,11 @@ check-proto: proto ## Verify generated proto stubs are up to date
 
 .PHONY: generate
 generate: $(CONTROLLER_GEN) ## Generate DeepCopy methods
-	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
+	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./api/..."
 
 .PHONY: check-deepcopy
 check-deepcopy: $(CONTROLLER_GEN) ## Verify zz_generated.deepcopy.go is up to date
-	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
+	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./api/..."
 	@git diff --exit-code -- $$(find api -name zz_generated.deepcopy.go -print) || \
 		(echo "ERROR: zz_generated.deepcopy.go is out of date. Run 'make generate'." && exit 1)
 
