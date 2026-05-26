@@ -236,18 +236,20 @@ type ClusterSpec struct {
 	// cloud / any cluster / any K8s distribution):
 	//
 	//  1. Platform team creates this Cluster with spec.bootstrap set.
-	//     `tokenHash` (when supplied) is an opaque slot identifier — its
-	//     value isn't cryptographically verified by the hub today (the
-	//     bootstrap ServiceAccount identity is the effective auth factor).
-	//     Changing it alone does not reset bootstrap state in this release;
-	//     delete and recreate the Cluster to issue a fresh bootstrap slot.
+	//     `tokenHash` (deprecated) is ignored for authentication in this
+	//     release. The bootstrap ServiceAccount identity is the effective auth
+	//     factor. Changing tokenHash alone does not reset bootstrap state; set
+	//     a future expiresAt or recreate the Cluster to issue a fresh bootstrap
+	//     slot.
 	//
 	//  2. The hub Cluster bootstrap reconciler provisions a per-cluster
 	//     ServiceAccount `kapro-bootstrap-<cluster>` in kapro-system with a
-	//     narrowly-scoped ClusterRole (CSR-create only, for this signer
-	//     name). It issues a TokenRequest for that SA (default 1h TTL,
-	//     default kube-apiserver audience) and writes the rendered kubeconfig
-	//     into Secret `kapro-bootstrap-kubeconfig-<cluster>`. The Secret
+	//     narrow ClusterRole that permits CSR create/get/watch for bootstrap
+	//     polling. Signer, subject, usage, SAN, and ServiceAccount identity are
+	//     enforced by the approver before any CSR is approved. The hub issues a
+	//     TokenRequest for that SA (default 1h TTL, default kube-apiserver
+	//     audience) and writes the rendered kubeconfig into Secret
+	//     `kapro-bootstrap-kubeconfig-<cluster>`. The Secret
 	//     name is recorded in `status.bootstrap.issuedBootstrapKubeconfig`.
 	//
 	//  3. The platform team ships that Secret out-of-band to the spoke
@@ -321,14 +323,15 @@ type ClusterProvider struct {
 // ClusterBootstrapSpec holds the one-time registration slot for a
 // Cluster. See ClusterSpec.Bootstrap doc for the full protocol.
 type ClusterBootstrapSpec struct {
-	// TokenHash is an opaque, platform-supplied bootstrap-slot identifier in
-	// SHA-256-hex shape (exactly 64 lowercase hex chars). It is NOT a
-	// pre-image-of-token check today: the hub controller's effective
-	// authorization is the bootstrap ServiceAccount it provisions (see the
-	// ClusterSpec.Bootstrap protocol). Changing this value is recorded in spec
-	// but does not reset status.bootstrap in this release.
+	// TokenHash is a deprecated, opaque bootstrap-slot annotation in SHA-256-hex
+	// shape (exactly 64 lowercase hex chars). It is NOT used for authentication:
+	// the hub controller's effective authorization is the bootstrap
+	// ServiceAccount it provisions (see the ClusterSpec.Bootstrap protocol).
+	// Changing this value is recorded in spec but does not reset
+	// status.bootstrap in this release.
 	// Validation pattern remains a SHA-256 hex so existing tooling that
 	// pre-computes the hash keeps working unmodified.
+	// Deprecated: tokenHash is not consumed by the v0.6 bootstrap controller.
 	// +kubebuilder:validation:Pattern=`^[0-9a-f]{64}$`
 	// +optional
 	TokenHash string `json:"tokenHash,omitempty"`

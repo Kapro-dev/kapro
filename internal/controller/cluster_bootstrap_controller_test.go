@@ -8,12 +8,14 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"fmt"
 	"testing"
 	"time"
 
 	certificatesv1 "k8s.io/api/certificates/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -269,6 +271,61 @@ func TestExpired(t *testing.T) {
 				t.Errorf("expired = %v, want %v", got, c.want)
 			}
 		})
+	}
+}
+
+func TestHandleExpiredCleansBootstrapResourcesAndClearsSecretStatus(t *testing.T) {
+	ctx := context.Background()
+	clusterName := "de-prod-01"
+	past := metav1.NewTime(time.Now().Add(-1 * time.Hour))
+	secretName := fmt.Sprintf(bootstrapKubeconfigSecretFmt, clusterName)
+	bootstrapRoleName := fmt.Sprintf(bootstrapRoleNameFmt, clusterName)
+
+	fc := &kaprov1alpha1.Cluster{
+		ObjectMeta: metav1.ObjectMeta{Name: clusterName},
+		Spec: kaprov1alpha1.ClusterSpec{
+			Bootstrap: &kaprov1alpha1.ClusterBootstrapSpec{ExpiresAt: &past},
+		},
+		Status: kaprov1alpha1.ClusterStatus{
+			Bootstrap: &kaprov1alpha1.ClusterBootstrapStatus{
+				IssuedBootstrapKubeconfig: secretName,
+			},
+		},
+	}
+	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Namespace: KaproSystemNamespace, Name: secretName}}
+	sa := &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Namespace: KaproSystemNamespace, Name: fmt.Sprintf(bootstrapSAFormat, clusterName)}}
+	role := &rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: bootstrapRoleName}}
+	binding := &rbacv1.ClusterRoleBinding{ObjectMeta: metav1.ObjectMeta{Name: bootstrapRoleName}}
+
+	r, c := newBootstrapReconciler(t, fc, secret, sa, role, binding)
+	if _, err := r.handleExpired(ctx, fc); err != nil {
+		t.Fatalf("handleExpired: %v", err)
+	}
+
+	for _, obj := range []client.Object{
+		&corev1.Secret{ObjectMeta: metav1.ObjectMeta{Namespace: KaproSystemNamespace, Name: secretName}},
+		&corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Namespace: KaproSystemNamespace, Name: fmt.Sprintf(bootstrapSAFormat, clusterName)}},
+		&rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: bootstrapRoleName}},
+		&rbacv1.ClusterRoleBinding{ObjectMeta: metav1.ObjectMeta{Name: bootstrapRoleName}},
+	} {
+		if err := c.Get(ctx, client.ObjectKeyFromObject(obj), obj); !apierrors.IsNotFound(err) {
+			t.Fatalf("expected %T %s to be deleted, got err=%v", obj, obj.GetName(), err)
+		}
+	}
+
+	got := &kaprov1alpha1.Cluster{}
+	if err := c.Get(ctx, client.ObjectKey{Name: clusterName}, got); err != nil {
+		t.Fatalf("get Cluster: %v", err)
+	}
+	if got.Status.Bootstrap == nil {
+		t.Fatal("expected bootstrap status to remain present")
+	}
+	if got.Status.Bootstrap.IssuedBootstrapKubeconfig != "" {
+		t.Fatalf("IssuedBootstrapKubeconfig = %q, want cleared", got.Status.Bootstrap.IssuedBootstrapKubeconfig)
+	}
+	cond := apimeta.FindStatusCondition(got.Status.Conditions, kaprov1alpha1.ConditionTypeStalled)
+	if cond == nil || cond.Status != metav1.ConditionTrue || cond.Reason != "BootstrapExpired" {
+		t.Fatalf("Stalled condition = %+v, want BootstrapExpired", cond)
 	}
 }
 

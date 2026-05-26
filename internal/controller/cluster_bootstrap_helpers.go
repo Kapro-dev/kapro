@@ -31,8 +31,8 @@ import (
 // isKaproCSR is a strict allowlist for CSRs this controller will touch.
 // Returns true only when: signer matches our constant, CN starts with the
 // kapro-cluster prefix, Organization is exactly ["kapro:cluster-controllers"]
-// (defends against O=system:masters escalation), and usages are exactly
-// [client auth] (no server auth, no key encipherment).
+// (defends against O=system:masters escalation), no SANs are requested, and
+// usages are exactly [client auth] (no server auth, no key encipherment).
 func isKaproCSR(csr *certificatesv1.CertificateSigningRequest) bool {
 	if csr == nil {
 		return false
@@ -48,6 +48,9 @@ func isKaproCSR(csr *certificatesv1.CertificateSigningRequest) bool {
 		return false
 	}
 	if len(req.Subject.Organization) != 1 || req.Subject.Organization[0] != csrOrganization {
+		return false
+	}
+	if hasSubjectAltNames(req) {
 		return false
 	}
 	return hasOnlyClientAuthUsage(csr.Spec.Usages)
@@ -71,6 +74,16 @@ func hasOnlyClientAuthUsage(usages []certificatesv1.KeyUsage) bool {
 		return false
 	}
 	return usages[0] == certificatesv1.UsageClientAuth
+}
+
+func hasSubjectAltNames(req *x509.CertificateRequest) bool {
+	if req == nil {
+		return false
+	}
+	return len(req.DNSNames) > 0 ||
+		len(req.EmailAddresses) > 0 ||
+		len(req.IPAddresses) > 0 ||
+		len(req.URIs) > 0
 }
 
 func isCSRApproved(csr *certificatesv1.CertificateSigningRequest) bool {

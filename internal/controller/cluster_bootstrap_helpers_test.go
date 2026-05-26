@@ -315,14 +315,11 @@ func TestIsCSRApprovedDenied(t *testing.T) {
 }
 
 func TestIsKaproCSR(t *testing.T) {
-	makeCSR := func(t *testing.T, signerName, cn string, orgs []string, usages []certificatesv1.KeyUsage) *certificatesv1.CertificateSigningRequest {
+	makeCSRFromTemplate := func(t *testing.T, signerName string, tmpl *x509.CertificateRequest, usages []certificatesv1.KeyUsage) *certificatesv1.CertificateSigningRequest {
 		t.Helper()
 		key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 		if err != nil {
 			t.Fatalf("generate key: %v", err)
-		}
-		tmpl := &x509.CertificateRequest{
-			Subject: pkix.Name{CommonName: cn, Organization: orgs},
 		}
 		der, err := x509.CreateCertificateRequest(rand.Reader, tmpl, key)
 		if err != nil {
@@ -337,6 +334,12 @@ func TestIsKaproCSR(t *testing.T) {
 				Usages:     usages,
 			},
 		}
+	}
+	makeCSR := func(t *testing.T, signerName, cn string, orgs []string, usages []certificatesv1.KeyUsage) *certificatesv1.CertificateSigningRequest {
+		t.Helper()
+		return makeCSRFromTemplate(t, signerName, &x509.CertificateRequest{
+			Subject: pkix.Name{CommonName: cn, Organization: orgs},
+		}, usages)
 	}
 
 	t.Run("valid kapro CSR", func(t *testing.T) {
@@ -398,6 +401,16 @@ func TestIsKaproCSR(t *testing.T) {
 			[]certificatesv1.KeyUsage{certificatesv1.UsageClientAuth, certificatesv1.UsageServerAuth})
 		if isKaproCSR(csr) {
 			t.Error("CSR requesting server auth must be rejected")
+		}
+	})
+
+	t.Run("subject alt names rejected", func(t *testing.T) {
+		csr := makeCSRFromTemplate(t, csrSigner, &x509.CertificateRequest{
+			Subject:  pkix.Name{CommonName: "kapro-cluster:de-prod-01", Organization: []string{csrOrganization}},
+			DNSNames: []string{"de-prod-01.example.com"},
+		}, []certificatesv1.KeyUsage{certificatesv1.UsageClientAuth})
+		if isKaproCSR(csr) {
+			t.Error("CSR requesting DNS SANs must be rejected")
 		}
 	})
 

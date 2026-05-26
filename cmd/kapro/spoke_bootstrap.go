@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/clientcmd"
@@ -215,6 +216,10 @@ func waitForBootstrapSecret(ctx context.Context, c client.Client, name string, t
 		if fc.Status.Bootstrap != nil && fc.Status.Bootstrap.IssuedBootstrapKubeconfig != "" {
 			secretName = fc.Status.Bootstrap.IssuedBootstrapKubeconfig
 			return true, nil
+		}
+		if stalled := apimeta.FindStatusCondition(fc.Status.Conditions, kaprov1alpha1.ConditionTypeStalled); stalled != nil &&
+			stalled.Status == metav1.ConditionTrue {
+			return false, fmt.Errorf("cluster bootstrap stalled: %s: %s", stalled.Reason, stalled.Message)
 		}
 		return false, nil
 	})

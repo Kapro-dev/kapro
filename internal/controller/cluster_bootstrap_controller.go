@@ -182,7 +182,7 @@ func (r *ClusterBootstrapReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	// Phase 2 — expired? Mark stalled. No more provisioning.
 	if r.expired(fc) {
 		log.Info("bootstrap slot expired", "expiresAt", fc.Spec.Bootstrap.ExpiresAt)
-		return r.markExpired(ctx, fc)
+		return r.handleExpired(ctx, fc)
 	}
 
 	// Phase 3 — always process matching CSRs (bootstrap-pending OR renewal).
@@ -312,12 +312,22 @@ func (r *ClusterBootstrapReconciler) expired(fc *kaprov1alpha1.Cluster) bool {
 	return time.Now().After(fc.Spec.Bootstrap.ExpiresAt.Time)
 }
 
+func (r *ClusterBootstrapReconciler) handleExpired(ctx context.Context, fc *kaprov1alpha1.Cluster) (ctrl.Result, error) {
+	if err := r.cleanupBootstrapResources(ctx, fc.Name); err != nil {
+		return ctrl.Result{}, fmt.Errorf("cleanup expired bootstrap resources: %w", err)
+	}
+	return r.markExpired(ctx, fc)
+}
+
 // markExpired patches Stalled=True with reason BootstrapExpired.
 func (r *ClusterBootstrapReconciler) markExpired(ctx context.Context, fc *kaprov1alpha1.Cluster) (ctrl.Result, error) {
 	patch := client.MergeFrom(fc.DeepCopy())
 	fc.Status.ObservedGeneration = fc.Generation
+	if fc.Status.Bootstrap != nil {
+		fc.Status.Bootstrap.IssuedBootstrapKubeconfig = ""
+	}
 	now := time.Now()
-	setCondition(&fc.Status.Conditions, kaprov1alpha1.ConditionTypeStalled, metav1.ConditionTrue, "BootstrapExpired", "bootstrap slot expired before any CSR was submitted; update spec.bootstrap to retry", fc.Generation, now)
+	setCondition(&fc.Status.Conditions, kaprov1alpha1.ConditionTypeStalled, metav1.ConditionTrue, "BootstrapExpired", "bootstrap slot expired before any CSR was submitted; set a future spec.bootstrap.expiresAt or recreate the Cluster to retry", fc.Generation, now)
 	setCondition(&fc.Status.Conditions, kaprov1alpha1.ConditionTypeReconciling, metav1.ConditionFalse, "BootstrapExpired", "stalled: bootstrap expired", fc.Generation, now)
 	setCondition(&fc.Status.Conditions, kaprov1alpha1.ConditionTypeRegistered, metav1.ConditionFalse, "BootstrapExpired", "fleetcluster never registered before bootstrap expired", fc.Generation, now)
 	setCondition(&fc.Status.Conditions, kaprov1alpha1.ConditionTypeReady, metav1.ConditionFalse, "BootstrapExpired", "fleetcluster is not ready: bootstrap expired", fc.Generation, now)
