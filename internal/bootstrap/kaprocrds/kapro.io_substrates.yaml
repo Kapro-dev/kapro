@@ -61,7 +61,7 @@ spec:
           spec:
             description: |-
               SubstrateSpec registers a delivery substrate profile that can be selected
-              by Fleet or Cluster spec.substrate.substrateRef.
+              by Fleet or Cluster spec.substrate.ref.
             properties:
               classRef:
                 description: |-

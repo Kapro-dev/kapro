@@ -8,7 +8,7 @@ metadata:
 spec:
   substrate:
     mode: push
-    substrateRef: direct
+    ref: direct
     parameters:
       deployment: checkout-direct
       container: app

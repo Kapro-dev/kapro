@@ -101,7 +101,7 @@ not visibility.
 
 ## Consequences
 
-- Greenfield scaffolds generate `deliveryunits/<name>.yaml`, not
+- New promotion repo scaffolds generate `deliveryunits/<name>.yaml`, not
   `sources/<name>.yaml`.
 - Existing Argo and Flux import paths generate DeliveryUnits with embedded
   source mappings.
@@ -111,9 +111,9 @@ not visibility.
   the canonical `kapro.io/unit` label.
 - `Fleet` still serves older inline source and plan fields as compatibility
   inputs during the 0.6.x hard-migration window. They are not emitted by
-  greenfield or import generators, are not the public-preview authoring path,
-  and should be removed before v1.0 once equivalent DeliveryUnit/Plan coverage
-  exists in conformance and quickstart tests.
+  new-repo or import generators, are not the public-preview authoring path, and
+  should be removed before v1.0 once equivalent DeliveryUnit/Plan coverage exists
+  in conformance and quickstart tests.
 - Static GitOps YAML must not fake ownerReferences. Controller-derived `Source`
   and `Trigger` owner references are set only by the DeliveryUnit controller.
 

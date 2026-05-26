@@ -11,8 +11,8 @@ import (
 // ---- Source ---------------------------------------------------------------
 
 // SourceSpec defines the native promotion units a DeliveryUnit can move through
-// a fleet. Units may map to generated Flux resources in greenfield mode or to
-// substrate-native objects discovered from Argo/Flux in native mode.
+// a fleet. Units may map to generated Flux resources in a new promotion repo or
+// to substrate-native objects discovered from existing Argo/Flux repositories.
 // The public-preview authoring path embeds this in DeliveryUnit.spec.source;
 // Fleet.spec.source and Fleet.spec.sourceRef remain compatibility inputs.
 type SourceSpec struct {
@@ -85,7 +85,7 @@ type SourceDefaults struct {
 }
 
 // Unit is one deployable unit within a Source.
-// It can describe a generated Helm unit for greenfield scaffolds or an existing
+// It can describe a generated Helm unit for new promotion repos or an existing
 // substrate-native object discovered from Argo/Flux.
 type Unit struct {
 	// Name is the stable delivery unit identifier.
@@ -201,7 +201,7 @@ type SourceOverride struct {
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // Source is the controller-derived source/app-unit contract for both generated
-// greenfield layouts and native Argo/Flux layouts.
+// promotion repo layouts and native Argo/Flux layouts.
 type Source struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

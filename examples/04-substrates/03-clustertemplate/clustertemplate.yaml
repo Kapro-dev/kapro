@@ -28,4 +28,4 @@ spec:
     spec:
       substrate:
         mode: pull
-        substrateRef: oci
+        ref: oci

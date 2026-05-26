@@ -16,7 +16,7 @@ No user-visible changes yet.
 Kapro now serves user-authored desired state from `kapro.io/v1alpha1` and
 controller-owned execution records from `runtime.kapro.io/v1alpha1`.
 `Backend` is renamed to `Substrate`, delivery references use
-`spec.delivery.substrateRef`, and user-facing Argo substrate names use `argo`.
+`spec.substrate.ref`, and user-facing Argo substrate names use `argo`.
 
 The 0.6 reset intentionally has no conversion webhook: no public-preview or
 production users depend on the prototype shape. Delete old prototype CRDs and
@@ -686,7 +686,7 @@ kapro lint -o json promotion.yaml
 Checks:
 
 - **Fleet** — exactly one of `spec.source` / `spec.sourceRef`,
-  `spec.delivery.substrateRef` set, `spec.clusters` non-empty.
+  `spec.substrate.ref` set, `spec.clusters` non-empty.
 - **Promotion** — `spec.fleetRef` set, `spec.version` or
   `spec.versions` set, `spec.timeout` set (advisory), no duplicate
   scope targets, non-empty Plan refs.

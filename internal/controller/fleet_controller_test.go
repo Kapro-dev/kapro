@@ -290,7 +290,7 @@ func TestFleetReconcilerSkipsResourceSetForNativeSubstrates(t *testing.T) {
 	if err := r.Get(ctx, client.ObjectKey{Name: "canary-eu"}, &cluster); err != nil {
 		t.Fatal(err)
 	}
-	if cluster.Spec.Substrate.SubstrateRef != "direct" || cluster.Spec.Substrate.Mode != kaprov1alpha1.SubstrateModePush {
+	if cluster.Spec.Substrate.SubstrateName() != "direct" || cluster.Spec.Substrate.Mode != kaprov1alpha1.SubstrateModePush {
 		t.Fatalf("cluster delivery = %#v", cluster.Spec.Substrate)
 	}
 }
@@ -348,7 +348,7 @@ func TestFleetReconcilerAcceptsTargetSetWithoutSourceOrInlinePlan(t *testing.T) 
 	if err := r.Get(ctx, client.ObjectKey{Name: "canary-eu"}, &cluster); err != nil {
 		t.Fatal(err)
 	}
-	if cluster.Spec.Substrate.SubstrateRef != "argo" || cluster.Spec.Substrate.Param("namespace", "") != "argocd" {
+	if cluster.Spec.Substrate.SubstrateName() != "argo" || cluster.Spec.Substrate.Param("namespace", "") != "argocd" {
 		t.Fatalf("cluster delivery = %#v", cluster.Spec.Substrate)
 	}
 }

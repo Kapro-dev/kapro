@@ -615,7 +615,7 @@ metadata:
 spec:
   substrate:
     mode: push
-    substrateRef: argo
+    ref: argo
     parameters:
       namespace: ${ARGO_NAMESPACE}
       authorizedSource: argo-e2e
@@ -636,7 +636,7 @@ metadata:
 spec:
   substrate:
     mode: push
-    substrateRef: argo
+    ref: argo
     parameters:
       namespace: ${ARGO_NAMESPACE}
       authorizedSource: argo-e2e

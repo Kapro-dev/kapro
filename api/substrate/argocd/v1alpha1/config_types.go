@@ -7,9 +7,11 @@ import (
 
 // ArgoCDSubstrateConfigSpec configures one Argo CD control plane instance.
 type ArgoCDSubstrateConfigSpec struct {
-	// Endpoint is the Argo CD API server URL.
-	// +kubebuilder:validation:MinLength=1
-	Endpoint string `json:"endpoint"`
+	// Endpoint is the Argo CD API server URL. When omitted, discovery and
+	// Kubernetes-object adoption use in-cluster RBAC against the configured
+	// namespace.
+	// +optional
+	Endpoint string `json:"endpoint,omitempty"`
 	// Namespace is the namespace that contains Argo CD Applications and
 	// cluster Secrets. Defaults to argocd when omitted.
 	// +optional

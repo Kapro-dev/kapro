@@ -9,7 +9,7 @@ import (
 // ---- Substrate ---------------------------------------------------------
 
 // SubstrateSpec registers a delivery substrate profile that can be selected
-// by Fleet or Cluster spec.substrate.substrateRef.
+// by Fleet or Cluster spec.substrate.ref.
 // +kubebuilder:validation:XValidation:rule="!(has(self.classRef) && has(self.substrate))",message="set either classRef or substrate, not both"
 // +kubebuilder:validation:XValidation:rule="!has(self.configRef) || has(self.classRef)",message="configRef requires classRef"
 // +kubebuilder:validation:XValidation:rule="has(self.substrate) || has(self.classRef)",message="one of classRef or substrate is required"

@@ -29,7 +29,7 @@ platform-gitops/
     promotions/
 ```
 
-Greenfield users can still use `kapro init --substrate flux`. Existing-estate
+New-repo users can still use `kapro init --substrate flux`. Existing GitOps
 users should label existing Flux objects and add only the Kapro metadata needed
 for promotion.
 

@@ -362,7 +362,7 @@ func TestLintKapro_NilSourceDoesNotPanic(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "k1"},
 		Spec: kaprov1alpha1.FleetSpec{
 			SourceRef: "shared-catalog",
-			Substrate: kaprov1alpha1.SubstrateBindingSpec{SubstrateRef: "flux"},
+			Substrate: kaprov1alpha1.SubstrateBindingSpec{Ref: "flux"},
 			Clusters:  []kaprov1alpha1.ClusterRef{{Name: "c1"}},
 		},
 	}
@@ -410,7 +410,7 @@ func TestLintKapro_SourceAndSourceRefCompatibility(t *testing.T) {
 				Spec: kaprov1alpha1.FleetSpec{
 					SourceRef: tc.sourceRef,
 					Source:    tc.source,
-					Substrate: kaprov1alpha1.SubstrateBindingSpec{SubstrateRef: "flux"},
+					Substrate: kaprov1alpha1.SubstrateBindingSpec{Ref: "flux"},
 					Clusters:  []kaprov1alpha1.ClusterRef{{Name: "c1"}},
 				},
 			}
@@ -436,9 +436,9 @@ func TestLintKapro_MissingSubstrateIsError(t *testing.T) {
 		},
 	}
 	issues := LintKapro(k)
-	hit := findIssue(t, issues, "substrateRef")
+	hit := findIssue(t, issues, "spec.substrate.ref")
 	if hit == nil || hit.Severity != SeverityError {
-		t.Fatalf("expected substrateRef ERROR; got %+v", issues)
+		t.Fatalf("expected spec.substrate.ref ERROR; got %+v", issues)
 	}
 }
 
@@ -447,7 +447,7 @@ func TestLintKapro_NoClustersWarn(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "k1"},
 		Spec: kaprov1alpha1.FleetSpec{
 			SourceRef: "shared",
-			Substrate: kaprov1alpha1.SubstrateBindingSpec{SubstrateRef: "flux"},
+			Substrate: kaprov1alpha1.SubstrateBindingSpec{Ref: "flux"},
 		},
 	}
 	issues := LintKapro(k)

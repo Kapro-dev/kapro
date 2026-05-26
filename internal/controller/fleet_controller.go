@@ -81,8 +81,8 @@ func (r *FleetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	if delivery.Mode == "" {
 		delivery.Mode = kaprov1alpha1.SubstrateModePull
 	}
-	if delivery.SubstrateRef == "" {
-		delivery.SubstrateRef = "flux"
+	if delivery.SubstrateName() == "" {
+		delivery.SetSubstrateName("flux")
 	}
 	deliveryPath := resolveFleetDeliveryPath(delivery)
 
@@ -123,7 +123,7 @@ func (r *FleetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		if clusterDelivery.Parameters == nil {
 			clusterDelivery.Parameters = map[string]string{}
 		}
-		if clusterDelivery.SubstrateRef == "flux" {
+		if clusterDelivery.SubstrateName() == "flux" {
 			if clusterDelivery.Mode == kaprov1alpha1.SubstrateModePush {
 				setDefaultParam(clusterDelivery.Parameters, "resourceSet", kapro.Name+"-workloads")
 				setDefaultParam(clusterDelivery.Parameters, "namespace", "flux-system")
@@ -216,7 +216,7 @@ func (r *FleetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			l.Info("skipping ResourceSet generation: Fleet has no legacy source; DeliveryUnit/Promotion own source-driven rollout")
 		}
 	case fleetDeliveryPathNative:
-		inventory = append(inventory, "Substrate/"+delivery.SubstrateRef)
+		inventory = append(inventory, "Substrate/"+delivery.SubstrateName())
 	}
 
 	// 4. Sync Cluster status from HelmRelease status (push model observability).
@@ -617,8 +617,8 @@ func fleetDeliveryPathForFleet(kapro *kaprov1alpha1.Fleet) fleetDeliveryPath {
 	if delivery.Mode == "" {
 		delivery.Mode = kaprov1alpha1.SubstrateModePull
 	}
-	if delivery.SubstrateRef == "" {
-		delivery.SubstrateRef = "flux"
+	if delivery.SubstrateName() == "" {
+		delivery.SetSubstrateName("flux")
 	}
 	return resolveFleetDeliveryPath(delivery)
 }
@@ -627,10 +627,10 @@ func resolveFleetDeliveryPath(delivery kaprov1alpha1.SubstrateBindingSpec) fleet
 	if delivery.Mode == "" {
 		delivery.Mode = kaprov1alpha1.SubstrateModePull
 	}
-	if delivery.SubstrateRef == "" {
-		delivery.SubstrateRef = "flux"
+	if delivery.SubstrateName() == "" {
+		delivery.SetSubstrateName("flux")
 	}
-	if delivery.SubstrateRef != "flux" {
+	if delivery.SubstrateName() != "flux" {
 		return fleetDeliveryPathNative
 	}
 	if delivery.Mode == kaprov1alpha1.SubstrateModePull {

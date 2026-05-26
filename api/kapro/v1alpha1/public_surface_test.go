@@ -112,7 +112,7 @@ func TestSubstrateCRDUsesPublicNaming(t *testing.T) {
 	root := repoRoot(t)
 	data := readFile(t, filepath.Join(root, "config", "crd", "bases", "kapro.io_substrates.yaml"))
 	text := string(data)
-	for _, want := range []string{"name: substrates.kapro.io", "kind: Substrate", "singular: substrate", "substrateRef"} {
+	for _, want := range []string{"name: substrates.kapro.io", "kind: Substrate", "singular: substrate", "spec.substrate.ref"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("kapro.io_substrates.yaml missing %q", want)
 		}

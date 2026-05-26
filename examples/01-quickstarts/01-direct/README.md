@@ -1,6 +1,6 @@
 # checkout-direct Kapro Direct Profile Repo
 
-This repo is a greenfield Kapro scaffold for direct Kubernetes apply.
+This repo is a new Kapro promotion repo scaffold for direct Kubernetes apply.
 
 Artifact input: the Deployment image must be pullable by the target cluster. For
 local Kind testing, push a disposable image to a local registry:

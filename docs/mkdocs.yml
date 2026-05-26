@@ -51,6 +51,7 @@ nav:
       - API Stability: concepts/api-stability.md
       - Release Train: concepts/release-train.md
       - Pre-stable Roadmap: concepts/pre-stable-roadmap.md
+      - API Usability Roadmap: concepts/api-usability-roadmap.md
       - v0.2.3 Scope: concepts/v0.2.3-scope.md
       - Changelog: https://github.com/Kapro-dev/kapro/blob/main/CHANGELOG.md
       - Preview Controllers: concepts/preview-controllers.md

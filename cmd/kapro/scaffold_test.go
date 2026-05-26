@@ -54,7 +54,7 @@ func TestRunInitScaffoldArgo(t *testing.T) {
 	}
 	kapro := readFile(t, filepath.Join(dir, "fleets/checkout.yaml"))
 	for _, want := range []string{
-		"substrateRef: argo",
+		"ref: argo",
 		"kapro.io/team: platform",
 		"kapro.io/stage: canary",
 		"kapro.io/stage: production",
@@ -231,7 +231,7 @@ func TestRunInitScaffoldOCIPull(t *testing.T) {
 		"name: canary-eu",
 		"kapro.io/stage: canary",
 		"mode: pull",
-		"substrateRef: oci",
+		"ref: oci",
 		"namespace: kapro-system",
 	} {
 		if !strings.Contains(cluster, want) {
@@ -467,8 +467,10 @@ func TestRunConnectScaffoldFlux(t *testing.T) {
 	}
 	content := readFile(t, filepath.Join(dir, "substrates/flux-observe.yaml"))
 	for _, want := range []string{
-		"kind: flux",
-		"actuator: flux",
+		"kind: SubstrateClass",
+		"kind: FluxSubstrateConfig",
+		"classRef:",
+		"configRef:",
 		"mode: hub-push",
 		"managementPolicy: Observe",
 		"kapro.io/import: \"true\"",
@@ -476,6 +478,14 @@ func TestRunConnectScaffoldFlux(t *testing.T) {
 	} {
 		if !strings.Contains(content, want) {
 			t.Fatalf("missing %q in:\n%s", want, content)
+		}
+	}
+	for _, forbidden := range []string{
+		"actuator:",
+		"\n  substrate:\n    kind:",
+	} {
+		if strings.Contains(content, forbidden) {
+			t.Fatalf("connect scaffold should not emit legacy %q in:\n%s", forbidden, content)
 		}
 	}
 }

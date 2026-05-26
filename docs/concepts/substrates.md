@@ -31,7 +31,7 @@ Use these policies through discovery/adoption configuration, for example
 
 | `substrate.kind` | Common `execution.mode` | Current use |
 |---|---|---|
-| `oci` | `spoke-pull` | Greenfield outbound-only delivery through the spoke controller. |
+| `oci` | `spoke-pull` | New-repo outbound-only delivery through the spoke controller. |
 | `flux` | `spoke-pull` or `hub-push` | Existing or generated Flux delivery, depending on cluster configuration. |
 | `argo` | `hub-push` | Existing Argo CD Application delivery with reviewed adoption boundaries. |
 | `kubernetes-apply` | `hub-push` | Direct Kubernetes server-side apply for bootstrap and simple default delivery. |
@@ -68,7 +68,7 @@ Review the generated `Substrate`, `Source`, and discovery status
 before switching a substrate to write mode. Kapro should only patch fields that
 the owning platform team has explicitly adopted.
 
-For new promotion repositories, use greenfield bootstrap:
+For new promotion repositories, use the create flow:
 
 ```bash
 kapro create direct ./promotion-repo --name checkout
