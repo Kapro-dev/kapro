@@ -149,7 +149,7 @@ workloads.
 
 For multi-cloud and air-gapped fleets, prefer
 `Cluster.spec.substrate.mode: pull` with a `Substrate` selected by
-`spec.substrate.substrateRef`. In pull mode the hub writes desired versions to
+`spec.substrate.ref`. In pull mode the hub writes desired versions to
 `Cluster.spec` and does not patch spoke workloads directly during a
 promotionrun. Each spoke applies the desired state locally through its selected
 substrate, reports `status.currentVersions` and `status.health`, and renews

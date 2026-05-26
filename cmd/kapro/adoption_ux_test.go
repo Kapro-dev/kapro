@@ -15,7 +15,7 @@ func TestCreateDefaultCreatesDirectRepo(t *testing.T) {
 		t.Fatal(err)
 	}
 	cluster := readFile(t, filepath.Join(dir, "clusters/canary-eu.yaml"))
-	for _, want := range []string{"mode: push", "substrateRef: direct", "manifestPath: apps/checkout"} {
+	for _, want := range []string{"mode: push", "ref: direct", "manifestPath: apps/checkout"} {
 		if !strings.Contains(cluster, want) {
 			t.Fatalf("cluster missing %q:\n%s", want, cluster)
 		}
@@ -43,7 +43,7 @@ func TestCreateBareDirectoryCreatesDirectRepo(t *testing.T) {
 		t.Fatal(err)
 	}
 	cluster := readFile(t, filepath.Join(tmp, "promotion-repo/clusters/canary-eu.yaml"))
-	for _, want := range []string{"mode: push", "substrateRef: direct"} {
+	for _, want := range []string{"mode: push", "ref: direct"} {
 		if !strings.Contains(cluster, want) {
 			t.Fatalf("cluster missing %q:\n%s", want, cluster)
 		}
@@ -73,7 +73,7 @@ func TestCreateFluxCreatesPullRepo(t *testing.T) {
 		t.Fatal(err)
 	}
 	cluster := readFile(t, filepath.Join(dir, "clusters/canary-eu.yaml"))
-	for _, want := range []string{"mode: pull", "substrateRef: flux", "ociRepository: checkout-bundle"} {
+	for _, want := range []string{"mode: pull", "ref: flux", "ociRepository: checkout-bundle"} {
 		if !strings.Contains(cluster, want) {
 			t.Fatalf("cluster missing %q:\n%s", want, cluster)
 		}
@@ -88,7 +88,7 @@ func TestCreateArgoCreatesPushRepo(t *testing.T) {
 		t.Fatal(err)
 	}
 	cluster := readFile(t, filepath.Join(dir, "clusters/canary-eu.yaml"))
-	for _, want := range []string{"mode: push", "substrateRef: argo", "application: checkout-canary-eu"} {
+	for _, want := range []string{"mode: push", "ref: argo", "application: checkout-canary-eu"} {
 		if !strings.Contains(cluster, want) {
 			t.Fatalf("cluster missing %q:\n%s", want, cluster)
 		}

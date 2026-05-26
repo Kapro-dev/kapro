@@ -311,6 +311,11 @@ spec:
                       Parameters are opaque substrate-specific settings, following the
                       StorageClass.parameters pattern. Fleet core does not interpret them.
                     type: object
+                  ref:
+                    description: |-
+                      Ref is the Substrate name. Built-in profiles commonly use "flux" or
+                      "argo"; external profiles may use any platform-defined name.
+                    type: string
                   staging:
                     description: |-
                       Staging declares optional pre-commit safety semantics for substrates that
@@ -336,13 +341,20 @@ spec:
                     type: object
                   substrateRef:
                     description: |-
-                      SubstrateRef is the Substrate name. Built-in profiles commonly use
-                      "flux" or "argo"; external profiles may use any platform-defined name.
+                      SubstrateRef is the deprecated spelling of Ref.
+                      Deprecated: use ref.
                     type: string
                 required:
                 - mode
-                - substrateRef
                 type: object
+                x-kubernetes-validations:
+                - message: spec.substrate.ref is required
+                  rule: (has(self.ref) && self.ref != "") || (has(self.substrateRef)
+                    && self.substrateRef != "")
+                - message: spec.substrate.ref and deprecated spec.substrate.substrateRef
+                    must match when both are set
+                  rule: '!((has(self.ref) && self.ref != "") && (has(self.substrateRef)
+                    && self.substrateRef != "")) || self.ref == self.substrateRef'
               suspend:
                 description: Suspend pauses all reconciliation for this cluster.
                 type: boolean

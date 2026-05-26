@@ -13,6 +13,7 @@ import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -138,6 +139,44 @@ func TestDoctorReportSummarizesGitOpsSubstrates(t *testing.T) {
 	substrates := findDoctorCheck(report, "gitops-substrates")
 	if substrates.Status != doctorStatusPass || !strings.Contains(strings.Join(substrates.Details, ","), "substrate=flux") {
 		t.Fatalf("expected passing gitops substrate summary, got %#v", substrates)
+	}
+}
+
+func TestDoctorReportUsesTypedConfigNamespace(t *testing.T) {
+	config := &unstructured.Unstructured{}
+	config.SetGroupVersionKind(schema.GroupVersionKind{Group: "flux.substrate.kapro.io", Version: "v1alpha1", Kind: "FluxSubstrateConfig"})
+	config.SetName("checkout")
+	if err := unstructured.SetNestedField(config.Object, "flux-managed", "spec", "namespace"); err != nil {
+		t.Fatal(err)
+	}
+	substrate := &kaprov1alpha1.Substrate{
+		ObjectMeta: metav1.ObjectMeta{Name: "flux"},
+		Spec: kaprov1alpha1.SubstrateSpec{
+			ClassRef: &kaprov1alpha1.SubstrateClassReference{Name: "flux"},
+			ConfigRef: &kaprov1alpha1.SubstrateObjectReference{
+				APIVersion: "flux.substrate.kapro.io/v1alpha1",
+				Kind:       "FluxSubstrateConfig",
+				Name:       "checkout",
+			},
+			Execution:  &kaprov1alpha1.SubstrateExecutionSpec{Mode: kaprov1alpha1.ExecutionModeHubPush},
+			Parameters: map[string]string{"namespace": "wrong-namespace"},
+			Discovery:  &kaprov1alpha1.SubstrateDiscoverySpec{Enabled: true, ManagementPolicy: "Observe"},
+		},
+	}
+	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "flux-managed"}}
+	c := fakeDoctorClient(t, append(append(healthyDoctorObjects(), validatingWebhookObjects()...), substrate, config, ns)...)
+	report := collectDoctorReport(context.Background(), c, doctorOptions{
+		Namespace:  "kapro-system",
+		Deployment: "kapro-kapro-operator",
+	}, allowAllSAR)
+
+	substrates := findDoctorCheck(report, "gitops-substrates")
+	details := strings.Join(substrates.Details, ",")
+	if substrates.Status != doctorStatusPass || !strings.Contains(details, "namespace=flux-managed") {
+		t.Fatalf("expected typed config namespace in gitops substrate summary, got %#v", substrates)
+	}
+	if strings.Contains(details, "wrong-namespace") {
+		t.Fatalf("doctor should prefer typed config namespace over parameters, got %#v", substrates)
 	}
 }
 

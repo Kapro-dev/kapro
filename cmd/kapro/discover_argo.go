@@ -34,7 +34,7 @@ type argoDiscoverOptions struct {
 	Cache        bool
 	MaxFiles     int
 	MaxUnits     int
-	Take         bool
+	Adopt        bool
 	Force        bool
 }
 
@@ -185,12 +185,12 @@ func runArgoDiscover(opts argoDiscoverOptions) error {
 	}
 	result.RepoPath = opts.RepoPath
 	files := map[string]string{
-		filepath.Join("substrates", opts.Name+discoverSubstrateFileSuffix(opts.Take)+".yaml"): renderArgoDiscoverSubstrate(opts, matchLabels),
-		filepath.Join("deliveryunits", opts.Name+".yaml"):                                     renderArgoDiscoverDeliveryUnit(opts, result),
-		filepath.Join("discovery", "argo-discovery.yaml"):                                     renderArgoDiscoveryReport(result),
-		filepath.Join("discovery", "kapro-git-map.yaml"):                                      renderArgoGitAdoptionMap(opts, result),
-		filepath.Join("discovery", "review-summary.yaml"):                                     renderDiscoveryReviewSummary("argo", opts.Name, result.RepoPath, result.SelectedUnits, result.SkippedObjects, result.Errors),
-		filepath.Join("README.md"):                                                            renderArgoDiscoverReadme(opts, result),
+		filepath.Join("substrates", opts.Name+discoverSubstrateFileSuffix(opts.Adopt)+".yaml"): renderArgoDiscoverSubstrate(opts, matchLabels),
+		filepath.Join("deliveryunits", opts.Name+".yaml"):                                      renderArgoDiscoverDeliveryUnit(opts, result),
+		filepath.Join("discovery", "argo-discovery.yaml"):                                      renderArgoDiscoveryReport(result),
+		filepath.Join("discovery", "kapro-git-map.yaml"):                                       renderArgoGitAdoptionMap(opts, result),
+		filepath.Join("discovery", "review-summary.yaml"):                                      renderDiscoveryReviewSummary("argo", opts.Name, result.RepoPath, result.SelectedUnits, result.SkippedObjects, result.Errors),
+		filepath.Join("README.md"):                                                             renderArgoDiscoverReadme(opts, result),
 	}
 	if err := writeScaffoldFiles(opts.OutPath, files, opts.Force); err != nil {
 		return err
@@ -750,28 +750,10 @@ func dedupeUnits(units []argoDiscoveredUnit) []argoDiscoveredUnit {
 
 func renderArgoDiscoverSubstrate(opts argoDiscoverOptions, labels map[string]string) string {
 	managementPolicy := "Observe"
-	if opts.Take {
+	if opts.Adopt {
 		managementPolicy = "Adopt"
 	}
-	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha1
-kind: Substrate
-metadata:
-  name: %s
-spec:
-  substrate:
-    kind: argo
-    actuator: argo
-  execution:
-    mode: hub-push
-  parameters:
-    namespace: %s
-  discovery:
-    enabled: true
-    managementPolicy: %s
-    maxObjects: 1000
-    selector:
-      matchLabels:
-%s`, opts.Name, opts.Namespace, managementPolicy, renderYAMLMap(labels, 8))
+	return renderDiscoverSubstrate("argo", opts.Name, opts.Namespace, managementPolicy, labels)
 }
 
 func renderArgoDiscoverDeliveryUnit(opts argoDiscoverOptions, result argoDiscoveryResult) string {
@@ -944,9 +926,9 @@ func writeReportSubstrateObjects(b *strings.Builder, key string, objects []argoD
 func renderArgoDiscoverReadme(opts argoDiscoverOptions, result argoDiscoveryResult) string {
 	reviewInstruction := "before switching the Substrate from `Observe` to `Adopt`"
 	applyLead := "Apply observe mode first:"
-	if opts.Take {
+	if opts.Adopt {
 		reviewInstruction = "before running the Adopt-mode apply command below"
-		applyLead = "After review, apply adopt mode:"
+		applyLead = "After review, apply Adopt-mode resources:"
 	}
 	return fmt.Sprintf(`# Kapro Argo Discovery
 
@@ -971,7 +953,7 @@ kapro source apply --repo . --source deliveryunits/%s.yaml --set unit=revision
 Kapro discovered %d Applications, %d ApplicationSets, and %d source mapping units.
 Argo CD remains the owner of cluster credentials, repository credentials, sync
 policy, and local rollout behavior.
-`, opts.Name, reviewInstruction, applyLead, opts.Name, discoverSubstrateFileSuffix(opts.Take), opts.Name, opts.Name, len(result.Applications), len(result.ApplicationSets), len(result.SelectedUnits))
+`, opts.Name, reviewInstruction, applyLead, opts.Name, discoverSubstrateFileSuffix(opts.Adopt), opts.Name, opts.Name, len(result.Applications), len(result.ApplicationSets), len(result.SelectedUnits))
 }
 
 func argoUnitName(doc map[string]any, fallback string) string {

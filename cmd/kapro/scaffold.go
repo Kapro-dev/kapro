@@ -168,7 +168,7 @@ func runInitScaffold(opts scaffoldOptions) error {
 		opts.Team = "platform"
 	}
 
-	files := greenfieldFiles(opts, clusters)
+	files := newRepoFiles(opts, clusters)
 	if err := writeScaffoldFiles(opts.Path, files, opts.Force); err != nil {
 		return err
 	}
@@ -397,12 +397,12 @@ func prefixKubectlFileArgs(line, root string) string {
 	return strings.Join(fields, " ")
 }
 
-func greenfieldFiles(opts scaffoldOptions, clusters []scaffoldCluster) map[string]string {
+func newRepoFiles(opts scaffoldOptions, clusters []scaffoldCluster) map[string]string {
 	files := map[string]string{
-		filepath.Join("substrates", opts.Substrate+".yaml"):          renderGreenfieldSubstrate(opts),
+		filepath.Join("substrates", opts.Substrate+".yaml"):          renderNewRepoSubstrate(opts),
 		filepath.Join("deliveryunits", opts.Name+".yaml"):            renderDeliveryUnit(opts),
 		filepath.Join("plans", opts.Name+".yaml"):                    renderPlan(opts),
-		filepath.Join("README.md"):                                   renderGreenfieldReadme(opts),
+		filepath.Join("README.md"):                                   renderNewRepoReadme(opts),
 		filepath.Join(".github", "workflows", "kapro-validate.yaml"): renderValidationWorkflow(),
 		filepath.Join(".gitignore"):                                  ".DS_Store\n",
 	}
@@ -520,7 +520,7 @@ func parseSelector(raw string) (map[string]string, error) {
 	return labels, nil
 }
 
-func renderGreenfieldSubstrate(opts scaffoldOptions) string {
+func renderNewRepoSubstrate(opts scaffoldOptions) string {
 	return renderSubstrateClassSubstrate(opts)
 }
 
@@ -676,25 +676,75 @@ spec:
 }
 
 func renderConnectSubstrate(opts connectOptions, labels map[string]string) string {
+	return renderDiscoverSubstrate(opts.Substrate, opts.Name, opts.Namespace, "Observe", labels)
+}
+
+func renderDiscoverSubstrate(substrate, name, namespace, managementPolicy string, labels map[string]string) string {
+	apiVersion, configKind := substrateConfigKind(substrate)
+	family, ledger := substrateLabels(substrate)
 	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha1
+kind: SubstrateClass
+metadata:
+  name: %s
+  labels:
+    kapro.io/family: %s
+    kapro.io/ledger: %s
+spec:
+  controllerName: kapro.io/%s
+  executionModes:
+    default: hub-push
+---
+apiVersion: %s
+kind: %s
+metadata:
+  name: %s
+spec:
+  namespace: %s
+---
+apiVersion: kapro.io/v1alpha1
 kind: Substrate
 metadata:
   name: %s
 spec:
-  substrate:
+  classRef:
+    name: %s
+  configRef:
+    apiVersion: %s
     kind: %s
-    actuator: %s
+    name: %s
   execution:
     mode: hub-push
-  parameters:
-    namespace: %s
   discovery:
     enabled: true
-    managementPolicy: Observe
+    managementPolicy: %s
     maxObjects: 1000
     selector:
       matchLabels:
-%s`, opts.Name, opts.Substrate, opts.Substrate, opts.Namespace, renderYAMLMap(labels, 8))
+%s`, substrate, family, ledger, substrate, apiVersion, configKind, name, namespace, name, substrate, apiVersion, configKind, name, managementPolicy, renderYAMLMap(labels, 8))
+}
+
+func substrateConfigKind(substrate string) (string, string) {
+	switch substrate {
+	case "argo":
+		return argoCDSubstrateConfigAPIVersion, "ArgoCDSubstrateConfig"
+	case "flux":
+		return fluxSubstrateConfigAPIVersion, "FluxSubstrateConfig"
+	case "oci":
+		return ociSubstrateConfigAPIVersion, "OCIBundleApplyConfig"
+	default:
+		return kubernetesSubstrateConfigAPIVersion, "KubernetesApplyConfig"
+	}
+}
+
+func substrateLabels(substrate string) (string, string) {
+	switch substrate {
+	case "argo", "flux":
+		return "gitops", "git"
+	case "oci":
+		return "artifact", "oci-registry"
+	default:
+		return "direct", "cluster-api"
+	}
 }
 
 func renderCluster(opts scaffoldOptions, suffix, stage string) string {
@@ -708,7 +758,7 @@ metadata:
 spec:
   substrate:
     mode: %s
-    substrateRef: %s
+    ref: %s
     parameters:
       namespace: %s
 %s`, suffix, opts.Name, stage, opts.Mode, opts.Substrate, opts.Namespace, renderDeliveryParameters(opts, suffix))
@@ -830,7 +880,7 @@ metadata:
 spec:
   substrate:
     mode: %s
-    substrateRef: %s
+    ref: %s
     parameters:
       deployment: %s
       container: app
@@ -851,7 +901,7 @@ metadata:
 spec:
   substrate:
     mode: %s
-    substrateRef: %s
+    ref: %s
     parameters:
       namespace: %s
   clusters:
@@ -1018,7 +1068,7 @@ resources:
 	return b.String()
 }
 
-func renderGreenfieldReadme(opts scaffoldOptions) string {
+func renderNewRepoReadme(opts scaffoldOptions) string {
 	if len(parseClusterScaffold(opts.Clusters)) == 0 {
 		substrateStep := ""
 		if opts.Substrate == "argo" || opts.Substrate == "flux" || opts.Substrate == "direct" {
@@ -1052,7 +1102,7 @@ substrate-native Git URL placeholders to point at your repository.
 	if scaffoldProfile(opts) == "direct" {
 		return fmt.Sprintf(`# %s Kapro Direct Profile Repo
 
-This repo is a greenfield Kapro scaffold for direct Kubernetes apply.
+This repo is a new Kapro promotion repo scaffold for direct Kubernetes apply.
 
 Apply order:
 
@@ -1077,7 +1127,7 @@ API during promotion.
 	}
 	return fmt.Sprintf(`# %s Kapro Promotion Repo
 
-This repo is a greenfield Kapro scaffold for the %s substrate.
+This repo is a new Kapro promotion repo scaffold for the %s substrate.
 
 Apply order:
 

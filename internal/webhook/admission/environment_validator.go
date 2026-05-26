@@ -15,8 +15,8 @@ import (
 // FleetClusterValidator validates Cluster objects on CREATE and UPDATE.
 //
 // Rules enforced:
-//  1. delivery.mode and delivery.substrateRef must be set.
-//  2. When Reader is non-nil, the Substrate named by delivery.substrateRef
+//  1. spec.substrate.mode and spec.substrate.ref must be set.
+//  2. When Reader is non-nil, the Substrate named by spec.substrate.ref
 //     is checked opportunistically and reported as a warning if absent.
 //     Existence and readiness are controller lifecycle state, not admission
 //     requirements, so GitOps/bootstrap flows can apply Substrate and Cluster
@@ -61,16 +61,16 @@ func (v *FleetClusterValidator) Handle(ctx context.Context, req admission.Reques
 // Substrates as warnings, not denials. Admission stays structural; the Target
 // reconciler waits for Substrate existence/readiness before it applies.
 func validateFleetClusterSubstrateRef(ctx context.Context, reader client.Reader, mc *kaprov1alpha1.Cluster) ([]string, error) {
-	name := mc.Spec.Substrate.SubstrateRef
+	name := mc.Spec.Substrate.SubstrateName()
 	if name == "" {
 		return nil, nil // syntactic validator already rejected the empty case
 	}
 	var profile kaprov1alpha1.Substrate
 	if err := reader.Get(ctx, client.ObjectKey{Name: name}, &profile); err != nil {
 		if apierrors.IsNotFound(err) {
-			return []string{fmt.Sprintf("cluster.spec.substrate.substrateRef=%q: substrate not found yet; Target execution will wait for it", name)}, nil
+			return []string{fmt.Sprintf("cluster.spec.substrate.ref=%q: substrate not found yet; Target execution will wait for it", name)}, nil
 		}
-		return []string{fmt.Sprintf("cluster.spec.substrate.substrateRef=%q: substrate lookup failed; Target execution will retry: %v", name, err)}, nil
+		return []string{fmt.Sprintf("cluster.spec.substrate.ref=%q: substrate lookup failed; Target execution will retry: %v", name, err)}, nil
 	}
 	return validateResolvedSubstrateParameters(mc, profile.Spec.SubstrateKind()), nil
 }
@@ -90,8 +90,8 @@ func validateActuator(mc *kaprov1alpha1.Cluster) error {
 	if act.Mode == "" {
 		return fmt.Errorf("cluster.spec.substrate.mode must be set")
 	}
-	if act.SubstrateRef == "" {
-		return fmt.Errorf("cluster.spec.substrate.substrateRef must be set")
+	if act.SubstrateName() == "" {
+		return fmt.Errorf("cluster.spec.substrate.ref must be set")
 	}
 	return nil
 }

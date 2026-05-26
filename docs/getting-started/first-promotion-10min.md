@@ -1,6 +1,6 @@
 # First Promotion in 10 Minutes
 
-This is the shortest greenfield path for seeing Kapro create Promotion intent
+This is the shortest new-repo path for seeing Kapro create Promotion intent
 and reconcile a controller-owned PromotionRun attempt. Use the Kind demo when
 you want a fully local scripted environment; use this page when you already
 have a Kubernetes cluster and want to apply the smallest useful hub
@@ -124,8 +124,8 @@ KAPRO_CI_QUICKSTARTS=direct,flux,argo,oci scripts/ci-kind-smoke.sh
 
 ## Next
 
-- Argo CD greenfield path: [Argo CD Quickstart](quickstart-argo.md).
-- OCI-only greenfield path: [OCI Quickstart](quickstart-oci.md).
+- Argo CD new-repo path: [Argo CD Quickstart](quickstart-argo.md).
+- OCI-only new-repo path: [OCI Quickstart](quickstart-oci.md).
 - Existing Argo CD users: [Argo CD Existing GitOps Migration](../migration/argo-migration.md).
 - Existing Flux users: [Flux Existing GitOps Migration](../migration/flux-migration.md).
 - Discovery or needs-review issues: [Discovery Troubleshooting](../migration/discovery-troubleshooting.md).

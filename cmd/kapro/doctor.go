@@ -15,6 +15,8 @@ import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -473,10 +475,7 @@ func checkGitOpsSubstrates(ctx context.Context, c client.Client) doctorFinding {
 				mode = strings.ToLower(substrate.Spec.Discovery.ManagementPolicy)
 			}
 		}
-		namespace := strings.TrimSpace(substrate.Spec.Parameters["namespace"])
-		if namespace == "" {
-			namespace = defaultSubstrateNamespace(kind)
-		}
+		namespace := doctorSubstrateNamespace(ctx, c, &substrate)
 		details = append(details, fmt.Sprintf("%s substrate=%s execution=%s mode=%s namespace=%s", substrate.Name, kind, executionMode, mode, namespace))
 		if kind == string(kaprov1alpha1.SubstrateKindArgo) || kind == string(kaprov1alpha1.SubstrateKindFlux) {
 			var ns corev1.Namespace
@@ -505,6 +504,37 @@ func checkGitOpsSubstrates(ctx context.Context, c client.Client) doctorFinding {
 		Message: fmt.Sprintf("%d Substrate object(s) configured", len(substrates.Items)),
 		Details: limitDetails(details, 12),
 	}
+}
+
+func doctorSubstrateNamespace(ctx context.Context, c client.Client, substrate *kaprov1alpha1.Substrate) string {
+	if configNamespace := doctorSubstrateConfigNamespace(ctx, c, substrate); configNamespace != "" {
+		return configNamespace
+	}
+	if parameterNamespace := strings.TrimSpace(substrate.Spec.Parameters["namespace"]); parameterNamespace != "" {
+		return parameterNamespace
+	}
+	return defaultSubstrateNamespace(substrate.Spec.SubstrateKind())
+}
+
+func doctorSubstrateConfigNamespace(ctx context.Context, c client.Client, substrate *kaprov1alpha1.Substrate) string {
+	if c == nil || substrate.Spec.ConfigRef == nil {
+		return ""
+	}
+	ref := substrate.Spec.ConfigRef
+	gv, err := schema.ParseGroupVersion(ref.APIVersion)
+	if err != nil {
+		return ""
+	}
+	config := &unstructured.Unstructured{}
+	config.SetGroupVersionKind(gv.WithKind(ref.Kind))
+	if err := c.Get(ctx, client.ObjectKey{Namespace: ref.Namespace, Name: ref.Name}, config); err != nil {
+		return ""
+	}
+	namespace, _, err := unstructured.NestedString(config.Object, "spec", "namespace")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(namespace)
 }
 
 type doctorSecretRef struct {

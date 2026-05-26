@@ -12,7 +12,7 @@ metadata:
 spec:
   substrate:
     mode: pull
-    substrateRef: flux
+    ref: flux
   clusters:
     - name: checkout-canary-eu
       labels:

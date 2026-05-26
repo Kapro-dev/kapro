@@ -34,9 +34,9 @@ make build
 export PATH="$PWD/bin:$PATH"
 ```
 
-## Greenfield Flow
+## New Promotion Repo Flow
 
-Greenfield means you want Kapro to scaffold the promotion repository shape.
+Use this when you want Kapro to scaffold a new promotion repository shape.
 
 ```bash
 kapro create direct ./promotion-repo --name checkout
@@ -90,7 +90,7 @@ records.
 
 Use this when Argo CD or Flux already owns applications, credentials, and
 reconciliation. Kapro should start by observing and producing reviewable
-mappings; it should not take over writes during the first command.
+mappings; the first command does not grant Kapro write access.
 
 ```bash
 kapro import argo . \
@@ -119,25 +119,28 @@ This generates:
 - `discovery/*-discovery.yaml` with selected and skipped objects;
 - `discovery/kapro-git-map.yaml` with write-target evidence.
 
-Nothing is adopted yet. Review the generated files first. After the owning team
-approves exactly which fields Kapro may write, rerun the import with `--take`
+Kapro does not manage any discovered fields yet. Review the generated files
+first. After the owning team approves exactly which fields Kapro may write,
+rerun the import with `--adopt`
 or switch `Substrate.spec.discovery.managementPolicy` from `Observe` to
 `Adopt`.
 
 For continuous in-cluster discovery, `kapro import argo --apply` or
-`kapro import flux --apply` creates or updates a `Substrate` and matching
-`SubstrateDiscoveryPolicy`. The policy fails closed when the Substrate is missing, discovery
+`kapro import flux --apply` creates or updates a `SubstrateClass`, typed
+substrate config, `Substrate`, and matching `SubstrateDiscoveryPolicy`. The
+policy fails closed when the Substrate is missing, discovery
 is disabled, the policy adapter does not match the Substrate adapter, or the
 registered adapter cannot complete discovery. Use `--dry-run=client` with
 `--apply` to validate the live writes without persisting resources. Add
-`--take` only after review when the live `Substrate` should move to `Adopt`.
+`--adopt` only after review when the live `Substrate` should allow
+Kapro-managed writes.
 Run the operator with `substrate` and `substratediscoverypolicy` controllers
 when using this live apply path.
 
 ## Promotion Flow
 
-After greenfield scaffolding or existing GitOps mapping review, promotion looks
-the same:
+After new-repo scaffolding or existing GitOps mapping review, promotion looks the
+same:
 
 ```bash
 kapro promote checkout --version v1.2.3

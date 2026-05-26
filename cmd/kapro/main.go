@@ -42,6 +42,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 
 	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
+	argocdsubstratev1alpha1 "kapro.io/kapro/api/substrate/argocd/v1alpha1"
+	fluxsubstratev1alpha1 "kapro.io/kapro/api/substrate/flux/v1alpha1"
 	"kapro.io/kapro/internal/bootstrap"
 	"kapro.io/kapro/internal/cli"
 	kaproconfig "kapro.io/kapro/internal/config"
@@ -56,6 +58,8 @@ func init() {
 	_ = apiextensionsv1.AddToScheme(scheme)
 	_ = kaprov1alpha1.AddToScheme(scheme)
 	_ = kaproruntimev1alpha1.AddToScheme(scheme)
+	_ = argocdsubstratev1alpha1.AddToScheme(scheme)
+	_ = fluxsubstratev1alpha1.AddToScheme(scheme)
 }
 
 func main() {
@@ -254,7 +258,7 @@ func runClusterAdd(ctx context.Context, clusterName, providerName string, labels
 		},
 		Spec: kaprov1alpha1.ClusterSpec{
 			Substrate: kaprov1alpha1.SubstrateBindingSpec{
-				Mode: "pull", SubstrateRef: "flux",
+				Mode: "pull", Ref: "flux",
 				Parameters: map[string]string{
 					"namespace":     "flux-system",
 					"ociRepository": clusterName + "-bundle",
@@ -410,7 +414,7 @@ func runClusterSync(ctx context.Context, project string) error {
 			},
 			Spec: kaprov1alpha1.ClusterSpec{
 				Substrate: kaprov1alpha1.SubstrateBindingSpec{
-					Mode: "push", SubstrateRef: "flux",
+					Mode: "push", Ref: "flux",
 					Parameters: map[string]string{
 						"resourceSet": "fleet-workloads",
 						"namespace":   "flux-system",

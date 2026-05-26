@@ -92,13 +92,21 @@ from the Kapro operator. The public service includes capability discovery,
 apply, observe/convergence, and rollback methods. See
 [Actuator Plugin Contract](actuator-plugin-contract.md).
 
+KAI is the current out-of-process runtime path. It does not replace the
+`SubstrateClass`/typed-config model: use `SubstrateClass` and a config CRD for
+durable substrate wiring, then route runtime mutation through either an
+in-process KSI implementation or a `Plugin`-registered KAI endpoint. A
+language-neutral KSI gRPC bridge is planned for `v0.7.x` so external substrate
+authors can receive the full class/config envelope without linking into the
+Kapro controller process.
+
 ## Working example
 
 A live, CI-verified hello-world substrate ships in the repo:
 
 - [`examples/07-actuator-hello-world/`](https://github.com/Kapro-dev/kapro/tree/main/examples/07-actuator-hello-world)
-- README: walk-through of `substrate.kind`, `substrate.actuator`,
-  `execution.mode`, and `BoolFunc`.
+- README: walk-through of `SubstrateClass`, `classRef`, `execution.mode`, and
+  `BoolFunc`.
 - `hello_test.go`: registers the substrate via the public registry path,
   asserts `Apply` succeeds, and pins the capability profile so changes are
   deliberate.

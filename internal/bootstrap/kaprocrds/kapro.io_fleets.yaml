@@ -969,7 +969,7 @@ spec:
                     items:
                       description: |-
                         Unit is one deployable unit within a Source.
-                        It can describe a generated Helm unit for greenfield scaffolds or an existing
+                        It can describe a generated Helm unit for new promotion repos or an existing
                         substrate-native object discovered from Argo/Flux.
                       properties:
                         chartName:
@@ -1121,6 +1121,11 @@ spec:
                       Parameters are opaque substrate-specific settings, following the
                       StorageClass.parameters pattern. Fleet core does not interpret them.
                     type: object
+                  ref:
+                    description: |-
+                      Ref is the Substrate name. Built-in profiles commonly use "flux" or
+                      "argo"; external profiles may use any platform-defined name.
+                    type: string
                   staging:
                     description: |-
                       Staging declares optional pre-commit safety semantics for substrates that
@@ -1146,13 +1151,20 @@ spec:
                     type: object
                   substrateRef:
                     description: |-
-                      SubstrateRef is the Substrate name. Built-in profiles commonly use
-                      "flux" or "argo"; external profiles may use any platform-defined name.
+                      SubstrateRef is the deprecated spelling of Ref.
+                      Deprecated: use ref.
                     type: string
                 required:
                 - mode
-                - substrateRef
                 type: object
+                x-kubernetes-validations:
+                - message: spec.substrate.ref is required
+                  rule: (has(self.ref) && self.ref != "") || (has(self.substrateRef)
+                    && self.substrateRef != "")
+                - message: spec.substrate.ref and deprecated spec.substrate.substrateRef
+                    must match when both are set
+                  rule: '!((has(self.ref) && self.ref != "") && (has(self.substrateRef)
+                    && self.substrateRef != "")) || self.ref == self.substrateRef'
               suspended:
                 default: false
                 description: Suspended pauses Fleet reconciliation.

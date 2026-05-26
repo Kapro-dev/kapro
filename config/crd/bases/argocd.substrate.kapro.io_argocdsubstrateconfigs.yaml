@@ -78,8 +78,10 @@ spec:
                   not specify a project.
                 type: string
               endpoint:
-                description: Endpoint is the Argo CD API server URL.
-                minLength: 1
+                description: |-
+                  Endpoint is the Argo CD API server URL. When omitted, discovery and
+                  Kubernetes-object adoption use in-cluster RBAC against the configured
+                  namespace.
                 type: string
               namespace:
                 description: |-
@@ -91,8 +93,6 @@ spec:
                 format: int32
                 minimum: 1
                 type: integer
-            required:
-            - endpoint
             type: object
           status:
             description: ArgoCDSubstrateConfigStatus reports validation status for

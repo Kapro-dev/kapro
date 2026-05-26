@@ -326,6 +326,77 @@ func TestSubstrateProfileArgoDiscoveryCountsExistingResources(t *testing.T) {
 	}
 }
 
+func TestSubstrateProfileDiscoveryUsesTypedConfigNamespace(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	config := typedSubstrateConfigWithSpecNamespace("flux.substrate.kapro.io/v1alpha1", "FluxSubstrateConfig", "checkout", "flux-managed")
+	profile := &kaprov1alpha1.Substrate{
+		ObjectMeta: metav1.ObjectMeta{Name: "flux"},
+		Spec: kaprov1alpha1.SubstrateSpec{
+			ClassRef: &kaprov1alpha1.SubstrateClassReference{Name: "flux"},
+			ConfigRef: &kaprov1alpha1.SubstrateObjectReference{
+				APIVersion: "flux.substrate.kapro.io/v1alpha1",
+				Kind:       "FluxSubstrateConfig",
+				Name:       "checkout",
+			},
+			Discovery:  &kaprov1alpha1.SubstrateDiscoverySpec{Enabled: true},
+			Parameters: map[string]string{"namespace": "wrong-namespace"},
+		},
+	}
+	gitRepository := &unstructured.Unstructured{}
+	gitRepository.SetGroupVersionKind(schema.GroupVersionKind{Group: "source.toolkit.fluxcd.io", Version: "v1", Kind: "GitRepository"})
+	gitRepository.SetNamespace("flux-managed")
+	gitRepository.SetName("checkout-git")
+
+	r := &SubstrateReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(profile, config, gitRepository).Build(),
+	}
+
+	counts, reason, _ := r.observeDiscovery(context.Background(), profile)
+	if reason != "DiscoverySucceeded" {
+		t.Fatalf("reason=%s", reason)
+	}
+	if counts.applications != 1 {
+		t.Fatalf("applications=%d, want typed config namespace object to be discovered", counts.applications)
+	}
+}
+
+func TestSubstrateProfileObjectWatchUsesTypedConfigNamespace(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	config := typedSubstrateConfigWithSpecNamespace("flux.substrate.kapro.io/v1alpha1", "FluxSubstrateConfig", "checkout", "flux-managed")
+	profile := &kaprov1alpha1.Substrate{
+		ObjectMeta: metav1.ObjectMeta{Name: "flux"},
+		Spec: kaprov1alpha1.SubstrateSpec{
+			ClassRef: &kaprov1alpha1.SubstrateClassReference{Name: "flux"},
+			ConfigRef: &kaprov1alpha1.SubstrateObjectReference{
+				APIVersion: "flux.substrate.kapro.io/v1alpha1",
+				Kind:       "FluxSubstrateConfig",
+				Name:       "checkout",
+			},
+			Discovery:  &kaprov1alpha1.SubstrateDiscoverySpec{Enabled: true},
+			Parameters: map[string]string{"namespace": "wrong-namespace"},
+		},
+	}
+	gitRepository := &unstructured.Unstructured{}
+	gitRepository.SetGroupVersionKind(schema.GroupVersionKind{Group: "source.toolkit.fluxcd.io", Version: "v1", Kind: "GitRepository"})
+	gitRepository.SetNamespace("flux-managed")
+	gitRepository.SetName("checkout-git")
+
+	r := &SubstrateReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(profile, config).Build(),
+	}
+
+	requests := r.substrateProfilesForSubstrateObject(context.Background(), gitRepository)
+	if len(requests) != 1 || requests[0].Name != "flux" {
+		t.Fatalf("requests=%#v, want flux profile from typed config namespace", requests)
+	}
+}
+
 func TestSubstrateProfileArgoDiscoveryClassifiesExistingGitOpsPatterns(t *testing.T) {
 	scheme := runtime.NewScheme()
 	if err := clientgoscheme.AddToScheme(scheme); err != nil {
@@ -584,6 +655,14 @@ func typedSubstrateConfig(apiVersion, kind, namespace, name string) *unstructure
 	config.SetGroupVersionKind(gv.WithKind(kind))
 	config.SetNamespace(namespace)
 	config.SetName(name)
+	return config
+}
+
+func typedSubstrateConfigWithSpecNamespace(apiVersion, kind, name, namespace string) *unstructured.Unstructured {
+	config := typedSubstrateConfig(apiVersion, kind, "", name)
+	if err := unstructured.SetNestedField(config.Object, namespace, "spec", "namespace"); err != nil {
+		panic(err)
+	}
 	return config
 }
 

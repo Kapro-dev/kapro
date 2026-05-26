@@ -122,7 +122,7 @@ func renderFleetStatus(fleet kaprov1alpha1.Fleet, allClusters []kaprov1alpha1.Cl
 	}
 	cli.KV("Source", fleet.Spec.SourceRef)
 	cli.KV("Mode", mode)
-	cli.KV("Substrate", fleet.Spec.Substrate.SubstrateRef)
+	cli.KV("Substrate", fleet.Spec.Substrate.SubstrateName())
 	cli.KV("Version", fleet.Status.Version)
 	cli.KV("Clusters", fmt.Sprintf("%d total, %d converged",
 		fleet.Status.ClusterCount, fleet.Status.ConvergedCount))

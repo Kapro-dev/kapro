@@ -15,13 +15,14 @@ func newBootstrapCmd() *cobra.Command {
 		Short: "Choose and generate the first Kapro adoption path",
 		Long: `Bootstrap is the guided entrypoint for adopting Kapro.
 
-Use greenfield when Kapro should create a new promotion repository shape.
-Use import when Argo CD or Flux already owns delivery and Kapro should start in
-observe-first mode with reviewable mappings.`,
+Use create or bootstrap new-repo when Kapro should create a new promotion
+repository shape. Use import when Argo CD or Flux already owns delivery and
+Kapro should start in observe-first mode with reviewable mappings.`,
 	}
 	cmd.AddCommand(newBootstrapGuideCmd())
 	cmd.AddCommand(newBootstrapGenerateCmd())
-	cmd.AddCommand(newBootstrapGreenfieldCmd())
+	cmd.AddCommand(newBootstrapNewRepoCmd())
+	cmd.AddCommand(newBootstrapLegacyNewRepoCmd())
 	cmd.AddCommand(newBootstrapSubstrateCmd("direct"))
 	cmd.AddCommand(newBootstrapSubstrateCmd("argo"))
 	cmd.AddCommand(newBootstrapSubstrateCmd("flux"))
@@ -176,7 +177,7 @@ func newBootstrapSubstrateCmd(substrate string) *cobra.Command {
 	}
 	existingHint := "For an existing GitOps repository, use:\n  kapro import " + substrate + " . --out ./kapro-connect --name checkout"
 	if substrate == "direct" {
-		existingHint = "Direct is the smallest greenfield path. It does not require Argo CD, Flux, or an OCI registry."
+		existingHint = "Direct is the smallest new-repo path. It does not require Argo CD, Flux, or an OCI registry."
 	}
 	if substrate == "oci" {
 		existingHint = "OCI is the spoke-side pull helper. Use it when you do not want Argo CD or Flux on spokes."
@@ -216,10 +217,18 @@ helper. %s`, substrate, substrate, existingHint),
 	return cmd
 }
 
-func newBootstrapGreenfieldCmd() *cobra.Command {
+func newBootstrapNewRepoCmd() *cobra.Command {
+	return newBootstrapRepoCmd("new-repo [directory]", false)
+}
+
+func newBootstrapLegacyNewRepoCmd() *cobra.Command {
+	return newBootstrapRepoCmd("greenfield [directory]", true)
+}
+
+func newBootstrapRepoCmd(use string, hidden bool) *cobra.Command {
 	var opts scaffoldOptions
 	cmd := &cobra.Command{
-		Use:   "greenfield [directory]",
+		Use:   use,
 		Short: "Generate a new promotion lifecycle repo",
 		Long: `Generate Substrate, Fleet, Plan, Promotion, and substrate-native starter
 files for a new promotion lifecycle repository.
@@ -237,6 +246,7 @@ an OCI registry.`,
 			return runInitScaffold(opts)
 		},
 	}
+	cmd.Hidden = hidden
 	cmd.Flags().StringVar(&opts.Name, "name", "checkout", "Application or fleet name")
 	cmd.Flags().StringVar(&opts.Substrate, "substrate", "direct", "Substrate profile: direct, argo, flux, or oci")
 	cmd.Flags().StringVar(&opts.Mode, "mode", "push", "Delivery mode: push or pull")

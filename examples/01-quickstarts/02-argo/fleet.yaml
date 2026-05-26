@@ -11,7 +11,7 @@ metadata:
 spec:
   substrate:
     mode: push
-    substrateRef: argo
+    ref: argo
     parameters:
       namespace: argocd
   clusters:

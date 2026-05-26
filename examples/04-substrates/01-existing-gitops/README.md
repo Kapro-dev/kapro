@@ -205,7 +205,7 @@ Kapro should write only selected fields such as an image tag, chart version, or
 source revision; Flux keeps source authentication, reconciliation, drift
 correction, and workload rollout.
 
-## Greenfield
+## New Promotion Repos
 
 For new promotion repositories, use `kapro init`:
 

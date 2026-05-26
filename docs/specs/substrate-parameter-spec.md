@@ -167,7 +167,7 @@ For v1alpha1, app/workload mapping remains in `substrate.parameters`:
 
 ```yaml
 substrate:
-  substrateRef: prod-argo
+  ref: prod-argo
   parameters:
     application: payments-prod
     versionField: spec.source.targetRevision
@@ -183,7 +183,7 @@ field and class status for accepted binding kinds in the same release:
 
 ```yaml
 substrate:
-  substrateRef: prod-argo
+  ref: prod-argo
   bindingRef:
     apiVersion: argocd.substrate.kapro.io/v1alpha1
     kind: ArgoCDApplicationBinding
@@ -215,6 +215,15 @@ Optional extensions are advertised through capabilities and Go type assertion:
 
 KSI implementations must be idempotent for repeated `Apply` calls with the
 same request identity and desired versions.
+
+KSI is a Go SDK contract in `v0.6.x`. Language-neutral extension already exists
+for actuators, gates, and planners through the KAI/KGI/KPI gRPC plugin
+contracts and the `Plugin` CRD. A future `v0.7.x` substrate plugin bridge should
+either publish KSI as a gRPC/protobuf service or define a documented KSI-to-KAI
+bridge so external substrate authors can keep the `SubstrateClass`/typed-config
+model without linking into the Kapro controller process. Generic HTTP webhook
+substrates should remain an escape hatch, not the primary reusable plugin
+contract.
 
 ### KSI, KSP, And Legacy Actuators In 0.6
 

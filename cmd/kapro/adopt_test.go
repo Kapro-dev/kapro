@@ -15,6 +15,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
+	argocdsubstratev1alpha1 "kapro.io/kapro/api/substrate/argocd/v1alpha1"
+	fluxsubstratev1alpha1 "kapro.io/kapro/api/substrate/flux/v1alpha1"
 )
 
 func TestCreateOrUpdateObjectDryRunUsesClientDryRun(t *testing.T) {
@@ -38,19 +40,75 @@ func TestCreateOrUpdateObjectDryRunUsesClientDryRun(t *testing.T) {
 
 func TestImportArgoLiveApplyFlags(t *testing.T) {
 	cmd := newImportArgoCmd()
-	for _, name := range []string{"apply", "dry-run", "kubeconfig", "sync-interval", "take"} {
+	for _, name := range []string{"adopt", "apply", "dry-run", "kubeconfig", "sync-interval", "take"} {
 		if cmd.Flags().Lookup(name) == nil {
 			t.Fatalf("import argo missing --%s flag", name)
 		}
+	}
+	if !cmd.Flags().Lookup("take").Hidden {
+		t.Fatal("deprecated --take alias should be hidden from help")
 	}
 }
 
 func TestImportFluxLiveApplyFlags(t *testing.T) {
 	cmd := newImportFluxCmd()
-	for _, name := range []string{"apply", "dry-run", "kubeconfig", "sync-interval", "take"} {
+	for _, name := range []string{"adopt", "apply", "dry-run", "kubeconfig", "sync-interval", "take"} {
 		if cmd.Flags().Lookup(name) == nil {
 			t.Fatalf("import flux missing --%s flag", name)
 		}
+	}
+	if !cmd.Flags().Lookup("take").Hidden {
+		t.Fatal("deprecated --take alias should be hidden from help")
+	}
+}
+
+func TestImportSubstrateObjectsUseClassRefAndTypedConfig(t *testing.T) {
+	objects := importSubstrateObjects(importSubstrateOptions{
+		SubstrateKind: "flux",
+		SubstrateName: "checkout",
+		Namespace:     "flux-system",
+		SyncInterval:  "5m",
+	}, "flux", "Adopt", map[string]string{"team": "checkout"})
+
+	if got := len(objects); got != 4 {
+		t.Fatalf("objects=%d, want class/config/substrate/policy", got)
+	}
+	class, ok := objects[0].(*kaprov1alpha1.SubstrateClass)
+	if !ok || class.Name != "flux" || class.Spec.ControllerName != "kapro.io/flux" {
+		t.Fatalf("class object=%#v", objects[0])
+	}
+	config, ok := objects[1].(*fluxsubstratev1alpha1.FluxSubstrateConfig)
+	if !ok || config.Name != "checkout" || config.Spec.Namespace != "flux-system" {
+		t.Fatalf("config object=%#v", objects[1])
+	}
+	substrate, ok := objects[2].(*kaprov1alpha1.Substrate)
+	if !ok {
+		t.Fatalf("substrate object=%#v", objects[2])
+	}
+	if substrate.Spec.Substrate != nil {
+		t.Fatalf("live import should not emit legacy substrate implementation: %#v", substrate.Spec.Substrate)
+	}
+	if substrate.Spec.ClassRef == nil || substrate.Spec.ClassRef.Name != "flux" {
+		t.Fatalf("classRef=%#v, want flux", substrate.Spec.ClassRef)
+	}
+	if substrate.Spec.ConfigRef == nil ||
+		substrate.Spec.ConfigRef.APIVersion != fluxSubstrateConfigAPIVersion ||
+		substrate.Spec.ConfigRef.Kind != "FluxSubstrateConfig" ||
+		substrate.Spec.ConfigRef.Name != "checkout" {
+		t.Fatalf("configRef=%#v, want FluxSubstrateConfig checkout", substrate.Spec.ConfigRef)
+	}
+	if _, ok := substrate.Spec.Parameters["namespace"]; ok {
+		t.Fatalf("live import should keep namespace only on typed config, got parameters=%#v", substrate.Spec.Parameters)
+	}
+	if substrate.Spec.Discovery == nil ||
+		substrate.Spec.Discovery.ManagementPolicy != "Adopt" ||
+		substrate.Spec.Discovery.Selector == nil ||
+		substrate.Spec.Discovery.Selector.MatchLabels["team"] != "checkout" {
+		t.Fatalf("discovery=%#v, want adopt selector", substrate.Spec.Discovery)
+	}
+	policy, ok := objects[3].(*kaprov1alpha1.SubstrateDiscoveryPolicy)
+	if !ok || policy.Spec.SubstrateRef != "checkout" || policy.Spec.ExpectedKind != "flux" {
+		t.Fatalf("policy object=%#v", objects[3])
 	}
 }
 
@@ -59,26 +117,36 @@ func TestDiscoverSubstrateFileSuffix(t *testing.T) {
 		t.Fatalf("observe suffix=%q", got)
 	}
 	if got := discoverSubstrateFileSuffix(true); got != "-adopt" {
-		t.Fatalf("take suffix=%q", got)
+		t.Fatalf("adopt suffix=%q", got)
 	}
 }
 
-func TestImportTakeRendersAdoptModeSubstrates(t *testing.T) {
+func TestImportAdoptRendersAdoptModeSubstrates(t *testing.T) {
 	labels := map[string]string{"kapro.io/import": "true"}
-	argo := renderArgoDiscoverSubstrate(argoDiscoverOptions{Name: "checkout", Namespace: "argocd", Take: true}, labels)
-	if !strings.Contains(argo, "managementPolicy: Adopt") {
-		t.Fatalf("argo substrate missing Adopt policy:\n%s", argo)
+	argo := renderArgoDiscoverSubstrate(argoDiscoverOptions{Name: "checkout", Namespace: "argocd", Adopt: true}, labels)
+	for _, want := range []string{"kind: SubstrateClass", "kind: ArgoCDSubstrateConfig", "classRef:", "configRef:", "managementPolicy: Adopt"} {
+		if !strings.Contains(argo, want) {
+			t.Fatalf("argo substrate missing %q:\n%s", want, argo)
+		}
 	}
-	flux := renderFluxDiscoverSubstrate(fluxDiscoverOptions{Name: "checkout", Namespace: "flux-system", Take: false}, labels)
-	if !strings.Contains(flux, "managementPolicy: Observe") {
-		t.Fatalf("flux substrate missing Observe policy:\n%s", flux)
+	if strings.Contains(argo, "actuator:") {
+		t.Fatalf("argo substrate should not emit legacy actuator field:\n%s", argo)
+	}
+	flux := renderFluxDiscoverSubstrate(fluxDiscoverOptions{Name: "checkout", Namespace: "flux-system", Adopt: false}, labels)
+	for _, want := range []string{"kind: SubstrateClass", "kind: FluxSubstrateConfig", "classRef:", "configRef:", "managementPolicy: Observe"} {
+		if !strings.Contains(flux, want) {
+			t.Fatalf("flux substrate missing %q:\n%s", want, flux)
+		}
+	}
+	if strings.Contains(flux, "actuator:") {
+		t.Fatalf("flux substrate should not emit legacy actuator field:\n%s", flux)
 	}
 }
 
-func TestImportTakeReadmeReferencesAdoptSubstrate(t *testing.T) {
-	argo := renderArgoDiscoverReadme(argoDiscoverOptions{Name: "checkout", Take: true}, argoDiscoveryResult{})
+func TestImportAdoptReadmeReferencesAdoptSubstrate(t *testing.T) {
+	argo := renderArgoDiscoverReadme(argoDiscoverOptions{Name: "checkout", Adopt: true}, argoDiscoveryResult{})
 	for _, want := range []string{
-		"After review, apply adopt mode:",
+		"After review, apply Adopt-mode resources:",
 		"kubectl apply -f substrates/checkout-adopt.yaml",
 		"deliveryunits/checkout.yaml",
 		"before running the Adopt-mode apply command below",
@@ -88,15 +156,15 @@ func TestImportTakeReadmeReferencesAdoptSubstrate(t *testing.T) {
 		}
 	}
 	if strings.Contains(argo, "checkout-observe.yaml") {
-		t.Fatalf("argo README should not reference observe substrate in take mode:\n%s", argo)
+		t.Fatalf("argo README should not reference observe substrate in adopt mode:\n%s", argo)
 	}
 	if strings.Contains(argo, "sources/checkout.yaml") {
-		t.Fatalf("argo README should reference DeliveryUnit source mapping in take mode:\n%s", argo)
+		t.Fatalf("argo README should reference DeliveryUnit source mapping in adopt mode:\n%s", argo)
 	}
 
-	flux := renderFluxDiscoverReadme(fluxDiscoverOptions{Name: "checkout", Take: true}, fluxDiscoveryResult{})
+	flux := renderFluxDiscoverReadme(fluxDiscoverOptions{Name: "checkout", Adopt: true}, fluxDiscoveryResult{})
 	for _, want := range []string{
-		"After review, apply adopt mode:",
+		"After review, apply Adopt-mode resources:",
 		"kubectl apply -f substrates/checkout-adopt.yaml",
 		"deliveryunits/checkout.yaml",
 		"before running the Adopt-mode apply command below",
@@ -106,10 +174,10 @@ func TestImportTakeReadmeReferencesAdoptSubstrate(t *testing.T) {
 		}
 	}
 	if strings.Contains(flux, "checkout-observe.yaml") {
-		t.Fatalf("flux README should not reference observe substrate in take mode:\n%s", flux)
+		t.Fatalf("flux README should not reference observe substrate in adopt mode:\n%s", flux)
 	}
 	if strings.Contains(flux, "sources/checkout.yaml") {
-		t.Fatalf("flux README should reference DeliveryUnit source mapping in take mode:\n%s", flux)
+		t.Fatalf("flux README should reference DeliveryUnit source mapping in adopt mode:\n%s", flux)
 	}
 }
 
@@ -178,7 +246,13 @@ func TestCreateOrUpdateObjectPatchPreservesExistingMetadata(t *testing.T) {
 	if got.Generation != existing.Generation {
 		t.Fatalf("generation=%d, want %d", got.Generation, existing.Generation)
 	}
-	if got.Spec.Substrate == nil || got.Spec.Substrate.Actuator != "flux" || got.Spec.Execution == nil || got.Spec.Execution.Mode != kaprov1alpha1.ExecutionModeSpokePull {
+	if got.Spec.Substrate != nil ||
+		got.Spec.ClassRef == nil ||
+		got.Spec.ClassRef.Name != "flux" ||
+		got.Spec.ConfigRef == nil ||
+		got.Spec.ConfigRef.Kind != "FluxSubstrateConfig" ||
+		got.Spec.Execution == nil ||
+		got.Spec.Execution.Mode != kaprov1alpha1.ExecutionModeSpokePull {
 		t.Fatalf("spec=%#v, want import spec patched", got.Spec)
 	}
 }
@@ -251,8 +325,10 @@ func TestCreateOrUpdateObjectPatchDryRunUsesClientDryRun(t *testing.T) {
 }
 
 func testSubstrateSpec(kind string, mode kaprov1alpha1.ExecutionMode) kaprov1alpha1.SubstrateSpec {
+	apiVersion, configKind := substrateConfigKind(kind)
 	return kaprov1alpha1.SubstrateSpec{
-		Substrate: &kaprov1alpha1.SubstrateImplementationSpec{Kind: kind, Actuator: kind},
+		ClassRef:  &kaprov1alpha1.SubstrateClassReference{Name: kind},
+		ConfigRef: &kaprov1alpha1.SubstrateObjectReference{APIVersion: apiVersion, Kind: configKind, Name: kind},
 		Execution: &kaprov1alpha1.SubstrateExecutionSpec{Mode: mode},
 	}
 }
@@ -295,9 +371,15 @@ func fakeAdoptClient(t *testing.T, objects ...client.Object) client.Client {
 	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
 		t.Fatalf("add scheme: %v", err)
 	}
+	if err := argocdsubstratev1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("add argo scheme: %v", err)
+	}
+	if err := fluxsubstratev1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("add flux scheme: %v", err)
+	}
 	return fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithObjects(objects...).
-		WithStatusSubresource(&kaprov1alpha1.Substrate{}, &kaprov1alpha1.SubstrateDiscoveryPolicy{}).
+		WithStatusSubresource(&kaprov1alpha1.Substrate{}, &kaprov1alpha1.SubstrateDiscoveryPolicy{}, &argocdsubstratev1alpha1.ArgoCDSubstrateConfig{}, &fluxsubstratev1alpha1.FluxSubstrateConfig{}).
 		Build()
 }

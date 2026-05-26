@@ -69,9 +69,9 @@ func fleetClusterWithSubstrate(ref string) *kaprov1alpha1.Cluster {
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
 		Spec: kaprov1alpha1.ClusterSpec{
 			Substrate: kaprov1alpha1.SubstrateBindingSpec{
-				Mode:         kaprov1alpha1.SubstrateModePull,
-				SubstrateRef: ref,
-				Parameters:   map[string]string{"ociRepository": "cluster-a"},
+				Mode:       kaprov1alpha1.SubstrateModePull,
+				Ref:        ref,
+				Parameters: map[string]string{"ociRepository": "cluster-a"},
 			},
 		},
 	}

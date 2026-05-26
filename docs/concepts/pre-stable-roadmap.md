@@ -23,6 +23,7 @@ increment inside that line.
 | `0.2.x` | Programmable engine hardening | SubstrateDiscoveryPolicy discovery is real, programmable gates are documented and tested, release-train policy is enforced, and retention metrics are available before opt-in GC. |
 | `0.4.x` | Adoption and operator ergonomics | `pkg/kapro/server` can be assembled from smaller registrars, CLI adoption paths are observe-first by default, and existing GitOps adopters have clear rollback points. |
 | `0.6.x` | Ecosystem and conformance | External adapter authors can run conformance locally, at least one substrate adapter proves the plugin contract outside the in-tree controller path, and examples compile in CI. |
+| `0.7.x` | Usability and operator control | Metrics, optional disruption budgets, optional fair admission, and first BYOD pipeline/custom-API integrations reuse Kubernetes-shaped APIs instead of introducing a new workflow model. |
 | `0.8.x` | Operational scale and security | Upgrade, rollback, observability, tenancy, signing, provenance, and failure-mode tests are strong enough for production change-control review. |
 
 Concrete milestones inside those lines still need all three digits, for example
@@ -56,7 +57,7 @@ promoted to a milestone, use exact patch versions such as `v0.5.11` or
 `v0.6.1`.
 
 1. **Lock the public-preview scope.** `0.6.0` is GitOps Bootstrap Preview:
-   direct delivery, Argo CD, Flux, greenfield generation, and existing GitOps
+   direct delivery, Argo CD, Flux, new repo generation, and existing GitOps
    connect/adopt flows. ADR-0017's "any substrate" vision remains long-term
    positioning, not the first public release promise.
 2. **Lock the default boundary.** Keep Kapro's smallest default
@@ -152,8 +153,8 @@ work only after it has a real dry-run/runtime contract.
 Existing GitOps adoption output must use the same repo shape where possible and
 remain observe-first by default. The public CLI should use `create` for new
 repos, `import` for existing GitOps repositories, and `connect`/`discover` for
-lower-level substrate-only or inventory workflows. Avoid legacy-estate jargon
-as public command names.
+lower-level substrate-only or inventory workflows. Avoid estate jargon as public
+command names.
 
 Generated repos are frozen at generation time in milestone 1. Upgrade tooling
 such as `kapro bootstrap diff` or `kapro bootstrap upgrade` is Phase 2.
@@ -171,8 +172,8 @@ such as `kapro bootstrap diff` or `kapro bootstrap upgrade` is Phase 2.
   substrate author contract.
 - `kapro import argo` and `kapro import flux` work against real Argo CD and Flux
   installs, not only unit tests or repository fixtures.
-- Greenfield and existing GitOps connect/adopt walkthroughs exist for Argo CD
-  and Flux.
+- New-repo and existing GitOps connect/adopt walkthroughs exist for Argo CD and
+  Flux.
 - One quickstart exists for each public profile: `direct`, `argo`, `flux`, and
   `oci`.
 - Direct delivery has a five-minute quickstart with raw YAML and a documented
@@ -182,8 +183,8 @@ such as `kapro bootstrap diff` or `kapro bootstrap upgrade` is Phase 2.
   documented CLI/status flows.
 - At least 10 internal dogfood issues from generated-repo and adoption runs are
   closed before the public preview tag.
-- At least one internal dogfood repo has completed repeated greenfield and
-  existing GitOps adoption runs without manual manifest surgery.
+- At least one internal dogfood repo has completed repeated new-repo generation
+  and existing GitOps adoption runs without manual manifest surgery.
 
 ## 0.6.x Follow-up Work
 
@@ -198,9 +199,31 @@ These are tracked follow-ups, not launch blockers:
   deterministic status mapping, evidence, cancellation, rollback, and
   conformance coverage.
 
+## 0.7.x API Usability
+
+`0.7.x` should improve usability and operations without expanding Kapro into a
+new delivery platform. The public language should be "new promotion repo" and
+"existing GitOps repo"; avoid `greenfield` and `brownfield` in user docs,
+examples, CLI help, and CRD field names.
+
+The proposed `0.7.x` usability roadmap is:
+
+- Prometheus/controller metrics with low-cardinality labels and documented
+  alerts;
+- `PromotionDisruptionBudget`, shaped like Kubernetes `PodDisruptionBudget`;
+- optional `PromotionQueue` fair admission using selectors, parent refs, small
+  fair-share weights, and KAI-style hierarchical scheduling internally;
+- `tekton` as the first BYOD pipeline substrate through `SubstrateClass` and a
+  typed Tekton config object;
+- webhook/custom API substrate only after Tekton proves the shared evidence,
+  retry, timeout, and status-mapping contract.
+
+See [API Usability Roadmap](api-usability-roadmap.md) for the field-level audit
+and ship criteria.
+
 ## Permanent Product Non-goals
 
-These are identity boundaries, not deferred backlog items:
+These are identity boundaries, not deferred feature items:
 
 - Kapro is not a Helm registry.
 - Kapro is not a CI runner.

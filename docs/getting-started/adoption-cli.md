@@ -46,8 +46,8 @@ kapro import flux . --out ./kapro-connect --name checkout
 
 Observe-first adoption generates a Substrate, a DeliveryUnit with source
 mappings, and discovery review files. It does not mutate live Argo CD or Flux
-objects and it does not push Git changes. After review, pass `--take` to
-generate or apply an Adopt-mode Substrate.
+objects and it does not push Git changes. After review, pass `--adopt` only
+when Kapro should manage the reviewed fields.
 
 ## Samples
 

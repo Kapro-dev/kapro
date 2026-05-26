@@ -217,7 +217,7 @@ spec:
                     items:
                       description: |-
                         Unit is one deployable unit within a Source.
-                        It can describe a generated Helm unit for greenfield scaffolds or an existing
+                        It can describe a generated Helm unit for new promotion repos or an existing
                         substrate-native object discovered from Argo/Flux.
                       properties:
                         chartName:

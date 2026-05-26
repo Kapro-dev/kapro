@@ -65,7 +65,7 @@ The demo manifests are split by role:
 - `checkout-prod-eu`
 - `checkout-prod-us`
 
-Each target uses `spec.substrate.mode: push` with `substrateRef: flux`, pointed at
+Each target uses `spec.substrate.mode: push` with `ref: flux`, pointed at
 the local fixture `ResourceSet` named `checkout-demo` through
 `spec.substrate.parameters.resourceSet`.
 
