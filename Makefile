@@ -123,8 +123,11 @@ test-no-cover: generate manifests $(ENVTEST) ## Run unit + integration tests wit
 
 .PHONY: test
 test: generate manifests $(ENVTEST) ## Run unit + integration tests with envtest and coverage
-	KUBEBUILDER_ASSETS="$$($(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" \
-		go test ./... -coverprofile cover.out -covermode=atomic
+	KUBEBUILDER_ASSETS="$$($(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" ; \
+	export KUBEBUILDER_ASSETS ; \
+	go test ./... ; \
+	cover_pkgs="$$(go list -f '{{if or .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end}}' ./... | awk 'NF')" ; \
+	go test $$cover_pkgs -coverprofile cover.out -covermode=atomic
 	go tool cover -func cover.out
 
 .PHONY: conformance
