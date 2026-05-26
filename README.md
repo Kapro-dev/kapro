@@ -22,8 +22,8 @@ Flux, Argo CD, OCI pull agents, and other delivery systems keep owning the local
 Kapro is **pre-stable public release software**, not GA. The current public
 preview line is `v0.6.x`; user-authored APIs live in `kapro.io/v1alpha1` and
 controller-owned runtime records live in `runtime.kapro.io/v1alpha1`. This is a
-clean pre-stable break; there is no automatic conversion for older alpha
-manifests.
+clean pre-stable break; API-server conversion is not provided for older alpha
+manifests. Use `kapro migrate v0.6 v0.6.2` for the v0.6 manifest rename pass.
 
 ## Why Kapro
 
@@ -240,6 +240,7 @@ Start at [kapro.dev](https://kapro.dev) or use these repo docs:
 - [Adoption CLI](docs/getting-started/adoption-cli.md)
 - [First Promotion in 10 Minutes](docs/getting-started/first-promotion-10min.md)
 - [Kind Demo](examples/10-kind-demo/README.md)
+- [v0.6 to v0.6.2 Manifest Migration](docs/migration/v0.6-to-v0.6.2.md)
 - [Substrates](docs/concepts/substrates.md)
 - [Operations](docs/operations/operations.md)
 - [Security](docs/operations/security.md)

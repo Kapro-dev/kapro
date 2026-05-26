@@ -10,6 +10,7 @@ import (
 // PromotionSpec is the explicit action to deliver a DeliveryUnit version
 // through a Fleet. DeliveryUnit owns source/default intent, Fleet owns target
 // clusters and delivery defaults, and Plan owns rollout strategy.
+// +kubebuilder:validation:XValidation:rule="!(has(self.version) && has(self.versions))",message="spec.version and spec.versions are mutually exclusive; use version for one revision or versions for per-unit revisions"
 type PromotionSpec struct {
 	// Unit is the logical app/workload being promoted. Promotion is the
 	// explicit action boundary; changing DeliveryUnit source/defaults does not
@@ -24,10 +25,12 @@ type PromotionSpec struct {
 	// +optional
 	PlanRef string `json:"plan,omitempty"`
 	// Version is the default revision to deliver across all units.
+	// Mutually exclusive with Versions.
 	// +optional
 	Version string `json:"version,omitempty"`
 	// Versions maps PromotionUnit name to a per-unit revision.
-	// Either Version or at least one Versions entry must be set.
+	// Either Version or at least one Versions entry must be set. Mutually
+	// exclusive with Version.
 	// +optional
 	Versions map[string]string `json:"versions,omitempty"`
 	// Plans optionally defines the plan DAG for this action. When unset, the

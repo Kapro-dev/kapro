@@ -188,7 +188,7 @@ const (
 // ClusterSpec defines the desired state of a cluster in the Fleet fleet.
 type ClusterSpec struct {
 	// Delivery configures the substrate-neutral delivery adapter for this cluster.
-	Substrate SubstrateBindingSpec `json:"delivery"`
+	Delivery SubstrateBindingSpec `json:"delivery"`
 
 	// HealthCheck configures active health polling for this cluster.
 	// +optional

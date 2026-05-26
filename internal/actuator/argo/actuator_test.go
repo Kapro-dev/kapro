@@ -23,7 +23,7 @@ func TestApplyRequestsHardRefreshAndSyncOperation(t *testing.T) {
 	act := &Actuator{Client: c}
 	cluster := &kaprov1alpha1.Cluster{
 		Spec: kaprov1alpha1.ClusterSpec{
-			Substrate: kaprov1alpha1.SubstrateBindingSpec{
+			Delivery: kaprov1alpha1.SubstrateBindingSpec{
 				Parameters: map[string]string{
 					"namespace":   "argocd",
 					"application": "checkout",
@@ -69,7 +69,7 @@ func TestApplyRequiresAuthorizedApplication(t *testing.T) {
 	act := &Actuator{Client: c}
 	cluster := &kaprov1alpha1.Cluster{
 		Spec: kaprov1alpha1.ClusterSpec{
-			Substrate: kaprov1alpha1.SubstrateBindingSpec{
+			Delivery: kaprov1alpha1.SubstrateBindingSpec{
 				Parameters: map[string]string{
 					"namespace":   "argocd",
 					"application": "checkout",
@@ -97,7 +97,7 @@ func TestApplyByApplicationSelectorAndReportsSubstrateObjects(t *testing.T) {
 	act := &Actuator{Client: c}
 	cluster := &kaprov1alpha1.Cluster{
 		Spec: kaprov1alpha1.ClusterSpec{
-			Substrate: kaprov1alpha1.SubstrateBindingSpec{
+			Delivery: kaprov1alpha1.SubstrateBindingSpec{
 				Parameters: map[string]string{
 					"namespace":           "argocd",
 					"applicationSelector": "team=checkout,env=dev",

@@ -252,7 +252,7 @@ func TestFleetReconcilerSkipsResourceSetForNativeSubstrates(t *testing.T) {
 			Source: &kaprov1alpha1.SourceSpec{
 				Units: []kaprov1alpha1.Unit{{Name: "checkout", Version: "ghcr.io/example/checkout:0.1.0"}},
 			},
-			Substrate: kaprov1alpha1.SubstrateBindingSpec{
+			Delivery: kaprov1alpha1.SubstrateBindingSpec{
 				Mode: kaprov1alpha1.SubstrateModePush,
 				Ref:  "direct",
 			},
@@ -290,8 +290,8 @@ func TestFleetReconcilerSkipsResourceSetForNativeSubstrates(t *testing.T) {
 	if err := r.Get(ctx, client.ObjectKey{Name: "canary-eu"}, &cluster); err != nil {
 		t.Fatal(err)
 	}
-	if cluster.Spec.Substrate.SubstrateName() != "direct" || cluster.Spec.Substrate.Mode != kaprov1alpha1.SubstrateModePush {
-		t.Fatalf("cluster delivery = %#v", cluster.Spec.Substrate)
+	if cluster.Spec.Delivery.SubstrateName() != "direct" || cluster.Spec.Delivery.Mode != kaprov1alpha1.SubstrateModePush {
+		t.Fatalf("cluster delivery = %#v", cluster.Spec.Delivery)
 	}
 }
 
@@ -307,7 +307,7 @@ func TestFleetReconcilerAcceptsTargetSetWithoutSourceOrInlinePlan(t *testing.T) 
 	fleet := &kaprov1alpha1.Fleet{
 		ObjectMeta: metav1.ObjectMeta{Name: "checkout"},
 		Spec: kaprov1alpha1.FleetSpec{
-			Substrate: kaprov1alpha1.SubstrateBindingSpec{
+			Delivery: kaprov1alpha1.SubstrateBindingSpec{
 				Mode: kaprov1alpha1.SubstrateModePush,
 				Ref:  "argo",
 				Parameters: map[string]string{
@@ -348,8 +348,8 @@ func TestFleetReconcilerAcceptsTargetSetWithoutSourceOrInlinePlan(t *testing.T) 
 	if err := r.Get(ctx, client.ObjectKey{Name: "canary-eu"}, &cluster); err != nil {
 		t.Fatal(err)
 	}
-	if cluster.Spec.Substrate.SubstrateName() != "argo" || cluster.Spec.Substrate.Param("namespace", "") != "argocd" {
-		t.Fatalf("cluster delivery = %#v", cluster.Spec.Substrate)
+	if cluster.Spec.Delivery.SubstrateName() != "argo" || cluster.Spec.Delivery.Param("namespace", "") != "argocd" {
+		t.Fatalf("cluster delivery = %#v", cluster.Spec.Delivery)
 	}
 }
 

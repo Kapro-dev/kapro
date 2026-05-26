@@ -48,7 +48,7 @@ type ControllerContext struct {
 	Recorder record.EventRecorder
 
 	// ActuatorRegistry resolves KAI implementations by FleetCluster.spec.delivery.
-	// Controllers call ActuatorRegistry.Resolve(env.Spec.Substrate.RegistryKey())
+	// Controllers call ActuatorRegistry.Resolve(env.Spec.Delivery.RegistryKey())
 	// to get the correct adapter — Flux, Argo, or any registered substrate.
 	ActuatorRegistry *actuator.Registry
 

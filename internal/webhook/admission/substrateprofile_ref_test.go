@@ -68,7 +68,7 @@ func fleetClusterWithSubstrate(ref string) *kaprov1alpha1.Cluster {
 	return &kaprov1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
 		Spec: kaprov1alpha1.ClusterSpec{
-			Substrate: kaprov1alpha1.SubstrateBindingSpec{
+			Delivery: kaprov1alpha1.SubstrateBindingSpec{
 				Mode:       kaprov1alpha1.SubstrateModePull,
 				Ref:        ref,
 				Parameters: map[string]string{"ociRepository": "cluster-a"},
@@ -111,7 +111,7 @@ func TestValidateFleetClusterSubstrateRef_FluxParametersWarnAfterResolution(t *t
 		WithObjects(substrateProfile("team-flux", kaprov1alpha1.SubstrateKindFlux, true)).
 		Build()
 	mc := fleetClusterWithSubstrate("team-flux")
-	mc.Spec.Substrate.Parameters = nil
+	mc.Spec.Delivery.Parameters = nil
 	warnings, err := admission.ValidateFleetClusterSubstrateRef(context.Background(), reader, mc)
 	if err != nil {
 		t.Fatalf("missing flux parameters should warn, not deny: %v", err)

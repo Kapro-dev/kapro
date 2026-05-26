@@ -145,6 +145,19 @@ func TestFleetAndClusterUseSubstrateBindingInSpec(t *testing.T) {
 	}
 }
 
+func TestPromotionCRDRejectsAmbiguousVersionInput(t *testing.T) {
+	root := repoRoot(t)
+	text := string(readFile(t, filepath.Join(root, "config", "crd", "bases", "kapro.io_promotions.yaml")))
+	for _, want := range []string{
+		"!(has(self.version) && has(self.versions))",
+		"spec.version and spec.versions are mutually exclusive",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("kapro.io_promotions.yaml missing Promotion version exclusivity validation %q", want)
+		}
+	}
+}
+
 func TestGeneratedCRDsSyncedToChartAndBootstrap(t *testing.T) {
 	root := repoRoot(t)
 	for _, file := range crdFileSet(t, filepath.Join(root, "config", "crd", "bases")) {

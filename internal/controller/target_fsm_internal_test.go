@@ -87,7 +87,7 @@ func TestHandleApplying_RespectsActivePromotionRunClaim(t *testing.T) {
 	scheme := controllerTestScheme(t)
 	mc := &kaprov1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
-		Spec:       kaprov1alpha1.ClusterSpec{Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: "pull", Ref: "flux"}},
+		Spec:       kaprov1alpha1.ClusterSpec{Delivery: kaprov1alpha1.SubstrateBindingSpec{Mode: "pull", Ref: "flux"}},
 		Status: kaprov1alpha1.ClusterStatus{
 			ActivePromotionRun: "other-promotionrun",
 			CurrentVersions:    map[string]string{"default": "repo@sha256:old"},
@@ -129,7 +129,7 @@ func TestHandlePending_PullModeWaitsForFreshHeartbeat(t *testing.T) {
 	mc := &kaprov1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
 		Spec: kaprov1alpha1.ClusterSpec{
-			Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: "pull", Ref: "flux"},
+			Delivery: kaprov1alpha1.SubstrateBindingSpec{Mode: "pull", Ref: "flux"},
 		},
 	}
 	r := &TargetReconciler{
@@ -162,7 +162,7 @@ func TestHandlePending_ReadyTrueAllowsPullTarget(t *testing.T) {
 	mc := &kaprov1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
 		Spec: kaprov1alpha1.ClusterSpec{
-			Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: "pull", Ref: "flux"},
+			Delivery: kaprov1alpha1.SubstrateBindingSpec{Mode: "pull", Ref: "flux"},
 		},
 		Status: kaprov1alpha1.ClusterStatus{
 			Conditions: []metav1.Condition{{
@@ -214,7 +214,7 @@ func TestHandlePending_UnreachableDefersPullTarget(t *testing.T) {
 	mc := &kaprov1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
 		Spec: kaprov1alpha1.ClusterSpec{
-			Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: "pull", Ref: "flux"},
+			Delivery: kaprov1alpha1.SubstrateBindingSpec{Mode: "pull", Ref: "flux"},
 		},
 		Status: kaprov1alpha1.ClusterStatus{
 			Phase: kaprov1alpha1.ClusterPhaseUnreachable,

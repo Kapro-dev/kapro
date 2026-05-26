@@ -284,20 +284,26 @@ spec:
                 minLength: 1
                 type: string
               version:
-                description: Version is the default revision to deliver across all
-                  units.
+                description: |-
+                  Version is the default revision to deliver across all units.
+                  Mutually exclusive with Versions.
                 type: string
               versions:
                 additionalProperties:
                   type: string
                 description: |-
                   Versions maps PromotionUnit name to a per-unit revision.
-                  Either Version or at least one Versions entry must be set.
+                  Either Version or at least one Versions entry must be set. Mutually
+                  exclusive with Version.
                 type: object
             required:
             - fleet
             - unit
             type: object
+            x-kubernetes-validations:
+            - message: spec.version and spec.versions are mutually exclusive; use
+                version for one revision or versions for per-unit revisions
+              rule: '!(has(self.version) && has(self.versions))'
           status:
             description: PromotionStatus is the observed state of a Promotion intent.
             properties:

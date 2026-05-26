@@ -116,13 +116,13 @@ func renderFleetStatus(fleet kaprov1alpha1.Fleet, allClusters []kaprov1alpha1.Cl
 	cli.Header(fmt.Sprintf("fleet/%s", fleet.Name))
 
 	// Summary line.
-	mode := string(fleet.Spec.Substrate.Mode)
+	mode := string(fleet.Spec.Delivery.Mode)
 	if mode == "" {
 		mode = "pull"
 	}
 	cli.KV("Source", fleet.Spec.SourceRef)
 	cli.KV("Mode", mode)
-	cli.KV("Substrate", fleet.Spec.Substrate.SubstrateName())
+	cli.KV("Substrate", fleet.Spec.Delivery.SubstrateName())
 	cli.KV("Version", fleet.Status.Version)
 	cli.KV("Clusters", fmt.Sprintf("%d total, %d converged",
 		fleet.Status.ClusterCount, fleet.Status.ConvergedCount))
@@ -155,7 +155,7 @@ func renderFleetStatus(fleet kaprov1alpha1.Fleet, allClusters []kaprov1alpha1.Cl
 			version:   mc.Status.Version,
 			phase:     string(mc.Status.Phase),
 			healthy:   mc.Status.Health.AllWorkloadsReady,
-			substrate: mc.Spec.Substrate.RegistryKey(),
+			substrate: mc.Spec.Delivery.RegistryKey(),
 			heartbeat: mc.Status.LastHeartbeat,
 			ready:     mc.Status.Health.ReadyWorkloads,
 			total:     mc.Status.Health.TotalWorkloads,

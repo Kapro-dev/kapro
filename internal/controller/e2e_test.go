@@ -51,7 +51,7 @@ func TestE2E_PromotionRun_Sync_Converged(t *testing.T) {
 			Labels: map[string]string{"tier": "dev", "e2e": suffix},
 		},
 		Spec: kaprov1alpha1.ClusterSpec{
-			Substrate: kaprov1alpha1.SubstrateBindingSpec{
+			Delivery: kaprov1alpha1.SubstrateBindingSpec{
 				Mode: "pull", Ref: "flux",
 				Parameters: map[string]string{"namespace": "flux-system", "ociRepository": "test-repo"},
 			},
@@ -66,7 +66,7 @@ func TestE2E_PromotionRun_Sync_Converged(t *testing.T) {
 			Labels: map[string]string{"tier": "prod", "e2e": suffix},
 		},
 		Spec: kaprov1alpha1.ClusterSpec{
-			Substrate: kaprov1alpha1.SubstrateBindingSpec{
+			Delivery: kaprov1alpha1.SubstrateBindingSpec{
 				Mode: "pull", Ref: "flux",
 				Parameters: map[string]string{"namespace": "flux-system", "ociRepository": "test-repo"},
 			},
@@ -177,7 +177,7 @@ func TestE2E_HaltPolicy_CancelsSiblingTarget(t *testing.T) {
 			Labels: map[string]string{"tier": "halt", "halt-test": suffix},
 		},
 		Spec: kaprov1alpha1.ClusterSpec{
-			Substrate: kaprov1alpha1.SubstrateBindingSpec{
+			Delivery: kaprov1alpha1.SubstrateBindingSpec{
 				Mode: "pull", Ref: "flux",
 				Parameters: map[string]string{"namespace": "flux-system", "ociRepository": "test-repo"},
 			},
@@ -189,7 +189,7 @@ func TestE2E_HaltPolicy_CancelsSiblingTarget(t *testing.T) {
 			Labels: map[string]string{"tier": "halt", "halt-test": suffix},
 		},
 		Spec: kaprov1alpha1.ClusterSpec{
-			Substrate: kaprov1alpha1.SubstrateBindingSpec{
+			Delivery: kaprov1alpha1.SubstrateBindingSpec{
 				Mode: "pull", Ref: "flux",
 				Parameters: map[string]string{"namespace": "flux-system", "ociRepository": "test-repo"},
 			},

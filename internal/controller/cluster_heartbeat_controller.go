@@ -180,7 +180,7 @@ func (r *ClusterHeartbeatReconciler) computeDesiredReady(ctx context.Context, fc
 
 	// Push mode has no spoke agent and no Lease. Reachability is whatever
 	// the hub-side adapter says — we don't override.
-	if fc.Spec.Substrate.Mode == kaprov1alpha1.SubstrateModePush {
+	if fc.Spec.Delivery.Mode == kaprov1alpha1.SubstrateModePush {
 		return desiredReady{
 			Status:  metav1.ConditionTrue,
 			Reason:  kaprov1alpha1.ReasonPushModeNoHeartbeat,

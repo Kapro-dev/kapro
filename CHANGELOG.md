@@ -35,6 +35,42 @@ from one clean YAML contract:
 Generated examples, CLI scaffolding, CRDs, Helm chart CRDs, bootstrap CRDs, and
 release install docs now use the v0.6.2 shape.
 
+Before/after table:
+
+| v0.6 field | v0.6.2 field |
+| --- | --- |
+| `Cluster.spec.substrate` | `Cluster.spec.delivery` |
+| `Fleet.spec.substrate` | `Fleet.spec.delivery` |
+| `spec.delivery.substrateRef` | `spec.delivery.ref` |
+| `DeliveryUnit.spec.defaultFleetRef` | `DeliveryUnit.spec.defaultFleet` |
+| `DeliveryUnit.spec.defaultPlanRef` | `DeliveryUnit.spec.defaultPlan` |
+| `Promotion.spec.deliveryUnitRef` | `Promotion.spec.unit` |
+| `Promotion.spec.fleetRef` | `Promotion.spec.fleet` |
+| `Promotion.spec.planRef` | `Promotion.spec.plan` |
+| `PromotionRun.spec.deliveryUnitRef` | `PromotionRun.spec.unit` |
+| `PromotionRun.spec.fleetRef` | `PromotionRun.spec.fleet` |
+| `PromotionRun.spec.planRef` | `PromotionRun.spec.plan` |
+| `Trigger.spec.promotionTemplate.deliveryUnitRef` | `Trigger.spec.promotionTemplate.unit` |
+| `Trigger.spec.promotionTemplate.fleetRef` | `Trigger.spec.promotionTemplate.fleet` |
+| `Trigger.spec.promotionTemplate.planRef` | `Trigger.spec.promotionTemplate.plan` |
+| `DeliveryUnit.spec.triggers[].fleetRef` | `DeliveryUnit.spec.triggers[].fleet` |
+| `DeliveryUnit.spec.triggers[].planRef` | `DeliveryUnit.spec.triggers[].plan` |
+| `Source.spec.substrateRef` | `Source.spec.substrate` |
+| `SubstrateDiscoveryPolicy.spec.substrateRef` | `SubstrateDiscoveryPolicy.spec.substrate` |
+| `*.spec.suspend` | `*.spec.suspended` |
+| `Substrate.spec.discovery.enabled` | `Substrate.spec.discovery.suspended` with inverted boolean |
+| `Substrate.spec.substrate.kind` | `Substrate.spec.classRef.name` |
+| `Substrate.spec.substrate.actuator` | removed |
+
+`kapro migrate v0.6 v0.6.2` rewrites files, directories, or stdin/stdout
+streams to the v0.6.2 shape. See `docs/migration/v0.6-to-v0.6.2.md`.
+
+### Fixed — ambiguous Promotion versions rejected
+
+`Promotion.spec.version` and `Promotion.spec.versions` are now mutually
+exclusive at CRD validation time, with a controller-side guard as defense in
+depth. Use `version` for one revision or `versions` for per-unit revisions.
+
 ## v0.6.0 - 2026-05-25
 
 ### ⚠️ Breaking — 0.6 public/runtime API reset

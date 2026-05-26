@@ -24,7 +24,7 @@ type FleetSpec struct {
 	Source *SourceSpec `json:"source,omitempty"`
 	// Delivery selects the substrate-neutral delivery defaults copied to
 	// generated Cluster objects.
-	Substrate SubstrateBindingSpec `json:"delivery"`
+	Delivery SubstrateBindingSpec `json:"delivery"`
 	// Clusters defines the target clusters in the fleet.
 	// +kubebuilder:validation:MinItems=1
 	Clusters []ClusterRef `json:"clusters"`

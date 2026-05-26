@@ -286,7 +286,7 @@ func (r *PromotionRunReconciler) triggerTargetRollback(ctx context.Context, prom
 	var mc kaprov1alpha1.Cluster
 	if err := r.Get(ctx, client.ObjectKey{Name: target.Target}, &mc); err == nil {
 		if r.ActuatorRegistry != nil {
-			key := mc.Spec.Substrate.RegistryKey()
+			key := mc.Spec.Delivery.RegistryKey()
 			if act, actErr := r.ActuatorRegistry.Resolve(key); actErr == nil {
 				caps := actuatorCapabilitiesFor(r.ActuatorRegistry, key)
 				if len(target.PreviousVersions) > 0 {

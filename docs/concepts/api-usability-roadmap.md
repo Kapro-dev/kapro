@@ -97,12 +97,14 @@ generated runtime objects.
 | Controller metrics | Operators need to know whether Kapro is healthy before adding more CRDs. | Expose conventional controller-runtime and Kapro domain metrics with bounded labels. | Dashboards, alerts, tests for metric registration, and documented PromQL examples. |
 | PromotionDisruptionBudget | Teams need protection from voluntary promotion interruption during queue drains, supersede actions, or controller maintenance. | Mirror `PodDisruptionBudget`: `selector`, exactly one of `minAvailable` or `maxUnavailable`, status counts, and conditions. | A user who knows PDB can read the object without learning a new model. |
 | PromotionQueue | Shared Kapro hubs need fair admission so one team or app cannot consume all promotion slots. | Optional queue CRD with `parentRef`, `selector`, `fairShare.weight`, and `limits.maxActive`; use KAI-style hierarchical fair-share internally, but keep the public fields small. | No change to hello world, no required `queueRef`, deterministic admission tests, and starvation tests. |
+| Discriminator naming audit | Mixed `kind`, `type`, `mode`, and `substrateKind` fields make extension manifests harder to scan. | Use Kubernetes-style object `kind` only for API objects or native resource kinds, `type` for union branches such as trigger sources, and `mode` for execution topology. | No v0.6.2 churn; v0.7.x issue with field-by-field proposal before adding new discriminators. |
 | Tekton substrate | Pipeline teams want Kapro to trigger an existing deploy pipeline instead of embedding delivery logic. | Reuse `SubstrateClass` plus a typed `TektonPipelineConfig` that maps PromotionRun fields into Tekton `PipelineRun` params/workspaces. | First BYOD pipeline proof with cancellation, retries, evidence links, and conformance coverage. |
 | Language-neutral substrate plugin bridge | Platform teams want substrate implementations to run outside the Kapro process without losing the `SubstrateClass`/typed-config model. | Add a KSI gRPC/protobuf transport, or an explicit KSI-to-KAI bridge, registered through `Plugin` and keyed by `SubstrateClass.spec.controllerName`. | External authors can pass conformance from a live gRPC endpoint, and `SubstrateClass.status` reports capabilities from the endpoint. |
 | Webhook substrate | Platform teams need to call an internal deployment API without writing a Go plugin. | Reuse `SubstrateClass` plus a typed HTTP webhook config with endpoint Secret refs, timeout, retry policy, and status mapping. | Ship only after Tekton and the gRPC substrate bridge prove the shared evidence model. |
 
 Recommended order: metrics first, disruption budget second, queue third,
-Tekton fourth, language-neutral substrate plugin bridge fifth, webhook sixth.
+discriminator audit before new extension APIs, Tekton fourth,
+language-neutral substrate plugin bridge fifth, webhook sixth.
 This makes the train safer: operators get visibility before new scheduling
 behavior, and the generic webhook shape is not invented before concrete
 pipeline and gRPC plugin paths prove the evidence contract.

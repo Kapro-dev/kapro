@@ -25,8 +25,8 @@ func TestFleetBuilder(t *testing.T) {
 	if fleet.Name != "checkout" {
 		t.Fatalf("Name = %q", fleet.Name)
 	}
-	if fleet.Spec.Substrate.Ref != "flux" {
-		t.Fatalf("substrate.ref = %q", fleet.Spec.Substrate.Ref)
+	if fleet.Spec.Delivery.Ref != "flux" {
+		t.Fatalf("substrate.ref = %q", fleet.Spec.Delivery.Ref)
 	}
 	if got := fleet.Spec.Clusters[0].Labels["env"]; got != "dev" {
 		t.Fatalf("cluster label env = %q", got)

@@ -61,7 +61,7 @@ func (v *FleetClusterValidator) Handle(ctx context.Context, req admission.Reques
 // Substrates as warnings, not denials. Admission stays structural; the Target
 // reconciler waits for Substrate existence/readiness before it applies.
 func validateFleetClusterSubstrateRef(ctx context.Context, reader client.Reader, mc *kaprov1alpha1.Cluster) ([]string, error) {
-	name := mc.Spec.Substrate.SubstrateName()
+	name := mc.Spec.Delivery.SubstrateName()
 	if name == "" {
 		return nil, nil // syntactic validator already rejected the empty case
 	}
@@ -86,7 +86,7 @@ func validateFleetCluster(mc *kaprov1alpha1.Cluster) error {
 }
 
 func validateActuator(mc *kaprov1alpha1.Cluster) error {
-	act := mc.Spec.Substrate
+	act := mc.Spec.Delivery
 	if act.Mode == "" {
 		return fmt.Errorf("cluster.spec.delivery.mode must be set")
 	}
@@ -97,7 +97,7 @@ func validateActuator(mc *kaprov1alpha1.Cluster) error {
 }
 
 func validateResolvedSubstrateParameters(mc *kaprov1alpha1.Cluster, substrateKind string) []string {
-	act := mc.Spec.Substrate
+	act := mc.Spec.Delivery
 	switch substrateKind {
 	case string(kaprov1alpha1.SubstrateKindFlux):
 		if act.Mode == kaprov1alpha1.SubstrateModePull && act.Param("ociRepository", "") == "" {

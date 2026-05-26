@@ -102,7 +102,7 @@ func decisionFixtures() (*kaproruntimev1alpha1.PromotionRun, *kaprov1alpha1.Clus
 			Labels: map[string]string{"tier": "canary", "region": "eu-west"},
 		},
 		Spec: kaprov1alpha1.ClusterSpec{
-			Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: "pull", Ref: "flux"},
+			Delivery: kaprov1alpha1.SubstrateBindingSpec{Mode: "pull", Ref: "flux"},
 		},
 		Status: kaprov1alpha1.ClusterStatus{
 			Phase:         kaprov1alpha1.ClusterPhaseConverged,

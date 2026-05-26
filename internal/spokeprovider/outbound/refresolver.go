@@ -26,7 +26,7 @@ type RefResolver interface {
 }
 
 // Recognised parameter keys on SubstrateProfile.Spec.Parameters /
-// FleetCluster.Spec.Substrate.Parameters. Kept exported so tests and the
+// FleetCluster.Spec.Delivery.Parameters. Kept exported so tests and the
 // scaffolding CLI can reference them by name rather than re-typing strings.
 const (
 	// ParamRepository is the bare OCI repo path (no scheme, no tag).

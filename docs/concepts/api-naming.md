@@ -51,6 +51,25 @@ selected substrate twice.
 Kapro uses one enum instead of separate `location` and `mode` fields because
 combinations such as "hub pulls" are not meaningful for the public API.
 
+## Paused State Spelling
+
+Kubernetes `CronJob.spec.suspend` and Flux `Kustomization.spec.suspend` use a
+verb-style field. Kapro intentionally standardizes on `spec.suspended` for the
+v0.6.2 public-preview API because the field describes durable API state across
+`Promotion`, `Fleet`, `DeliveryUnit`, `Trigger`, `Policy`, `Cluster`, source
+units, and discovery settings.
+
+The user action still uses verb commands:
+
+```bash
+kapro suspend checkout-v1
+kapro resume checkout-v1
+```
+
+New Kapro APIs should not add `spec.suspend`; use `spec.suspended` for this
+paused-state boolean until a future API-version migration explicitly changes
+the convention.
+
 ## Removed Prototype Fields
 
 Kapro 0.6.2 removes the oldest prototype fields and the interim open-string

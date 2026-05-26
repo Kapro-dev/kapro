@@ -74,6 +74,7 @@ nav:
       - Cluster Bootstrap: operations/cluster-bootstrap.md
   - Migration:
       - Pre-0.6 API Reset: migration/pre-0.6-api-reset.md
+      - v0.6 to v0.6.2 Manifest Migration: migration/v0.6-to-v0.6.2.md
       - v0.4 to v0.5 Field Migration: migration/v0.4-to-v0.5-fields.md
       - Argo CD Existing GitOps Migration: migration/argo-migration.md
       - Flux Existing GitOps Migration: migration/flux-migration.md

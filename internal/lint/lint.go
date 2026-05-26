@@ -270,7 +270,7 @@ func LintKapro(k *kaprov1alpha1.Fleet) []Issue {
 		out = append(out, errAt("spec.source / spec.sourceRef",
 			"only one of spec.source or spec.sourceRef may be set"))
 	}
-	if k.Spec.Substrate.SubstrateName() == "" {
+	if k.Spec.Delivery.SubstrateName() == "" {
 		out = append(out, errAt("spec.delivery.ref",
 			"delivery substrate is required (e.g. flux, argo)"))
 	}

@@ -81,7 +81,7 @@ func TestFleetClusterTemplate_StaticSourceImportsKubeconfigRefs(t *testing.T) {
 					Labels: map[string]string{"owner": "platform"},
 				},
 				Spec: kaprov1alpha1.ClusterSpec{
-					Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: kaprov1alpha1.SubstrateModePull, Ref: "oci"},
+					Delivery: kaprov1alpha1.SubstrateBindingSpec{Mode: kaprov1alpha1.SubstrateModePull, Ref: "oci"},
 				},
 			},
 		},
@@ -144,7 +144,7 @@ func TestFleetClusterTemplate_ImportsDiscoveredClusters(t *testing.T) {
 					Labels: map[string]string{"managed-by": "kapro"},
 				},
 				Spec: kaprov1alpha1.ClusterSpec{
-					Substrate: kaprov1alpha1.SubstrateBindingSpec{
+					Delivery: kaprov1alpha1.SubstrateBindingSpec{
 						Mode: kaprov1alpha1.SubstrateModePull,
 						Ref:  "oci",
 					},
@@ -189,8 +189,8 @@ func TestFleetClusterTemplate_ImportsDiscoveredClusters(t *testing.T) {
 		if fc.Spec.Provider == nil || fc.Spec.Provider.Kind != "gcp-fleet" {
 			t.Errorf("%s missing derived provider: %+v", fc.Name, fc.Spec.Provider)
 		}
-		if fc.Spec.Substrate.SubstrateName() != "oci" {
-			t.Errorf("%s wrong substrate ref: %q", fc.Name, fc.Spec.Substrate.SubstrateName())
+		if fc.Spec.Delivery.SubstrateName() != "oci" {
+			t.Errorf("%s wrong substrate ref: %q", fc.Name, fc.Spec.Delivery.SubstrateName())
 		}
 		if len(fc.OwnerReferences) != 1 || fc.OwnerReferences[0].Name != tmpl.Name {
 			t.Errorf("%s missing ownerReference to template", fc.Name)
@@ -222,7 +222,7 @@ func TestFleetClusterTemplate_SelectorFilters(t *testing.T) {
 			Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"env": "prod"}},
 			Template: kaprov1alpha1.ClusterTemplateBody{
 				Spec: kaprov1alpha1.ClusterSpec{
-					Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: kaprov1alpha1.SubstrateModePull, Ref: "oci"},
+					Delivery: kaprov1alpha1.SubstrateBindingSpec{Mode: kaprov1alpha1.SubstrateModePull, Ref: "oci"},
 				},
 			},
 		},
@@ -260,14 +260,14 @@ func TestFleetClusterTemplate_LeavesUnmanagedClustersAlone(t *testing.T) {
 			Labels: map[string]string{"hand": "authored"},
 		},
 		Spec: kaprov1alpha1.ClusterSpec{
-			Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: kaprov1alpha1.SubstrateModePush, Ref: "flux"},
+			Delivery: kaprov1alpha1.SubstrateBindingSpec{Mode: kaprov1alpha1.SubstrateModePush, Ref: "flux"},
 		},
 	}
 	tmpl := &kaprov1alpha1.ClusterTemplate{
 		ObjectMeta: metav1.ObjectMeta{Name: "tmpl"},
 		Spec: kaprov1alpha1.ClusterTemplateSpec{
 			Source:   kaprov1alpha1.ClusterTemplateSource{GCP: &kaprov1alpha1.GCPFleetSource{Project: "p1"}},
-			Template: kaprov1alpha1.ClusterTemplateBody{Spec: kaprov1alpha1.ClusterSpec{Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: kaprov1alpha1.SubstrateModePull, Ref: "oci"}}},
+			Template: kaprov1alpha1.ClusterTemplateBody{Spec: kaprov1alpha1.ClusterSpec{Delivery: kaprov1alpha1.SubstrateBindingSpec{Mode: kaprov1alpha1.SubstrateModePull, Ref: "oci"}}},
 		},
 	}
 
@@ -295,8 +295,8 @@ func TestFleetClusterTemplate_LeavesUnmanagedClustersAlone(t *testing.T) {
 	if got.Labels[kaprov1alpha1.ClusterTemplateManagedByLabel] == kaprov1alpha1.ClusterTemplateManagedByValue {
 		t.Errorf("unmanaged FleetCluster was claimed by the template")
 	}
-	if got.Spec.Substrate.SubstrateName() != "flux" {
-		t.Errorf("hand-authored spec mutated: %+v", got.Spec.Substrate)
+	if got.Spec.Delivery.SubstrateName() != "flux" {
+		t.Errorf("hand-authored spec mutated: %+v", got.Spec.Delivery)
 	}
 }
 
@@ -309,7 +309,7 @@ func TestFleetClusterTemplate_Suspend(t *testing.T) {
 		Spec: kaprov1alpha1.ClusterTemplateSpec{
 			Source:   kaprov1alpha1.ClusterTemplateSource{GCP: &kaprov1alpha1.GCPFleetSource{Project: "p1"}},
 			Suspend:  true,
-			Template: kaprov1alpha1.ClusterTemplateBody{Spec: kaprov1alpha1.ClusterSpec{Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: kaprov1alpha1.SubstrateModePull, Ref: "oci"}}},
+			Template: kaprov1alpha1.ClusterTemplateBody{Spec: kaprov1alpha1.ClusterSpec{Delivery: kaprov1alpha1.SubstrateBindingSpec{Mode: kaprov1alpha1.SubstrateModePull, Ref: "oci"}}},
 		},
 	}
 	c := fake.NewClientBuilder().WithScheme(scheme).
@@ -346,7 +346,7 @@ func TestFleetClusterTemplate_SourceNotImplementedSurfacesCondition(t *testing.T
 		ObjectMeta: metav1.ObjectMeta{Name: "aws-stub"},
 		Spec: kaprov1alpha1.ClusterTemplateSpec{
 			Source:   kaprov1alpha1.ClusterTemplateSource{AWS: &kaprov1alpha1.AWSFleetSource{Region: "eu-west-1"}},
-			Template: kaprov1alpha1.ClusterTemplateBody{Spec: kaprov1alpha1.ClusterSpec{Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: kaprov1alpha1.SubstrateModePush, Ref: "flux"}}},
+			Template: kaprov1alpha1.ClusterTemplateBody{Spec: kaprov1alpha1.ClusterSpec{Delivery: kaprov1alpha1.SubstrateBindingSpec{Mode: kaprov1alpha1.SubstrateModePush, Ref: "flux"}}},
 		},
 	}
 	c := fake.NewClientBuilder().WithScheme(scheme).
@@ -395,7 +395,7 @@ func TestFleetClusterTemplate_PrunesOrphans(t *testing.T) {
 		Spec: kaprov1alpha1.ClusterTemplateSpec{
 			Source:   kaprov1alpha1.ClusterTemplateSource{GCP: &kaprov1alpha1.GCPFleetSource{Project: "p1"}},
 			Prune:    true,
-			Template: kaprov1alpha1.ClusterTemplateBody{Spec: kaprov1alpha1.ClusterSpec{Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: kaprov1alpha1.SubstrateModePull, Ref: "oci"}}},
+			Template: kaprov1alpha1.ClusterTemplateBody{Spec: kaprov1alpha1.ClusterSpec{Delivery: kaprov1alpha1.SubstrateBindingSpec{Mode: kaprov1alpha1.SubstrateModePull, Ref: "oci"}}},
 		},
 	}
 	orphan := &kaprov1alpha1.Cluster{

@@ -77,7 +77,7 @@ func (r *FleetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 
 	l.Info("reconciling Kapro", "name", kapro.Name)
 
-	delivery := kapro.Spec.Substrate
+	delivery := kapro.Spec.Delivery
 	if delivery.Mode == "" {
 		delivery.Mode = kaprov1alpha1.SubstrateModePull
 	}
@@ -142,7 +142,7 @@ func (r *FleetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 				Labels: cluster.Labels,
 			},
 			Spec: kaprov1alpha1.ClusterSpec{
-				Substrate: clusterDelivery,
+				Delivery: clusterDelivery,
 			},
 		}
 		if err := r.Patch(ctx, mc,
@@ -613,7 +613,7 @@ func fleetDeliveryPathForFleet(kapro *kaprov1alpha1.Fleet) fleetDeliveryPath {
 	if kapro == nil {
 		return fleetDeliveryPathFluxSpoke
 	}
-	delivery := kapro.Spec.Substrate
+	delivery := kapro.Spec.Delivery
 	if delivery.Mode == "" {
 		delivery.Mode = kaprov1alpha1.SubstrateModePull
 	}

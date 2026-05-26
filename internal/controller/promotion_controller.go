@@ -580,6 +580,9 @@ func buildRunSpec(p *kaprov1alpha1.Promotion, parent *kaprov1alpha1.Fleet, unit 
 	if len(plans) == 0 {
 		return kaprov1alpha1.PromotionRunSpec{}, fmt.Errorf("set spec.plan, spec.plans, DeliveryUnit.spec.defaultPlan, or legacy Fleet.spec.plan")
 	}
+	if p.Spec.Version != "" && len(p.Spec.Versions) > 0 {
+		return kaprov1alpha1.PromotionRunSpec{}, fmt.Errorf("spec.version and spec.versions are mutually exclusive")
+	}
 	if p.Spec.Version == "" && len(p.Spec.Versions) == 0 {
 		return kaprov1alpha1.PromotionRunSpec{}, fmt.Errorf("either spec.version or spec.versions must be set")
 	}

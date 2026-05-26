@@ -39,6 +39,8 @@ cluster provisioner, or secret store.
 - [Operations](operations/operations.md) covers day-two status, debugging, and metrics.
 - [API Stability](concepts/api-stability.md) explains the pre-stable clean-break
   policy and the public/runtime API split.
+- [v0.6 to v0.6.2 Manifest Migration](migration/v0.6-to-v0.6.2.md) lists the
+  public-preview rename table and `kapro migrate` helper.
 - [Competitive Positioning](adr/0012-competitive-positioning.md) explains where
   Kapro fits beside Sveltos, Argo Rollouts, Flagger, and GitOps Toolkit.
 

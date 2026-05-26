@@ -52,7 +52,7 @@ func (a *FluxOperatorActuator) Apply(ctx context.Context, req actuator.ApplyRequ
 	if mc == nil {
 		return fmt.Errorf("cluster is nil")
 	}
-	delivery := mc.Spec.Substrate
+	delivery := mc.Spec.Delivery
 
 	ns, tenantField := resolveConfig(&delivery)
 	resourceSet := delivery.Param("resourceSet", "")
@@ -102,7 +102,7 @@ func (a *FluxOperatorActuator) ApplyDelta(ctx context.Context, req actuator.Delt
 		return 0, fmt.Errorf("cluster is nil")
 	}
 	mc := req.Cluster
-	delivery := mc.Spec.Substrate
+	delivery := mc.Spec.Delivery
 	resourceSet := delivery.Param("resourceSet", "")
 	if resourceSet == "" {
 		return 0, fmt.Errorf("FleetCluster %q substrate.parameters.resourceSet is required for flux push delivery", mc.Name)
@@ -169,7 +169,7 @@ func (a *FluxOperatorActuator) ApplyDelta(ctx context.Context, req actuator.Delt
 // ResourceSet Ready only means "YAML was applied" — we also need to verify the spoke
 // HelmRelease actually succeeded (Ready=True on the HelmRelease itself).
 func (a *FluxOperatorActuator) IsConverged(ctx context.Context, mc *kaprov1alpha1.Cluster, appKey, version string) (bool, error) {
-	delivery := mc.Spec.Substrate
+	delivery := mc.Spec.Delivery
 	resourceSet := delivery.Param("resourceSet", "")
 	if resourceSet == "" {
 		return false, fmt.Errorf("FleetCluster %q substrate.parameters.resourceSet is required for flux push delivery", mc.Name)
@@ -218,7 +218,7 @@ func (a *FluxOperatorActuator) IsAllConverged(ctx context.Context, mc *kaprov1al
 	if mc == nil {
 		return false, fmt.Errorf("cluster is nil")
 	}
-	delivery := mc.Spec.Substrate
+	delivery := mc.Spec.Delivery
 	resourceSet := delivery.Param("resourceSet", "")
 	if resourceSet == "" {
 		return false, fmt.Errorf("FleetCluster %q substrate.parameters.resourceSet is required for flux push delivery", mc.Name)

@@ -43,8 +43,8 @@ func (b *FleetBuilder) Build() *kaprov1alpha1.Fleet {
 		},
 		ObjectMeta: metav1.ObjectMeta{Name: b.name},
 		Spec: kaprov1alpha1.FleetSpec{
-			Substrate: kaprov1alpha1.SubstrateBindingSpec{Ref: b.substrate},
-			Clusters:  copyClusterRefs(b.clusters),
+			Delivery: kaprov1alpha1.SubstrateBindingSpec{Ref: b.substrate},
+			Clusters: copyClusterRefs(b.clusters),
 		},
 	}
 }

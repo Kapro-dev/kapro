@@ -47,7 +47,7 @@ func newKapro(name string) *kaprov1alpha1.Fleet {
 		ObjectMeta: metav1.ObjectMeta{Name: name},
 		Spec: kaprov1alpha1.FleetSpec{
 			SourceRef: "shared-catalog",
-			Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: "pull", Ref: "flux"},
+			Delivery:  kaprov1alpha1.SubstrateBindingSpec{Mode: "pull", Ref: "flux"},
 			Clusters: []kaprov1alpha1.ClusterRef{
 				{Name: "c1", Labels: map[string]string{"stage": "prod"}},
 			},
@@ -264,6 +264,33 @@ func TestPromotionSpecChangeStampsNewAttemptAndSupersedes(t *testing.T) {
 	if got.Status.Attempts[0].Version != "v1.2.4" {
 		t.Fatalf("attempts[0].Version = %q, want v1.2.4 (newest first)", got.Status.Attempts[0].Version)
 	}
+}
+
+func TestPromotionRejectsVersionAndVersionsTogether(t *testing.T) {
+	ctx := context.Background()
+	p := newPromotion("checkout-v1", "checkout", "v1.2.3")
+	p.Spec.Versions = map[string]string{"api": "v1.2.3"}
+	r, c := newPromotionReconciler(t, newKapro("checkout"), p)
+
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: p.Name}}); err != nil {
+		t.Fatal(err)
+	}
+
+	var runs kaproruntimev1alpha1.PromotionRunList
+	if err := c.List(ctx, &runs); err != nil {
+		t.Fatal(err)
+	}
+	if len(runs.Items) != 0 {
+		t.Fatalf("len(runs) = %d, want 0 for ambiguous version input", len(runs.Items))
+	}
+	var got kaprov1alpha1.Promotion
+	if err := c.Get(ctx, client.ObjectKey{Name: p.Name}, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Status.Phase != kaprov1alpha1.PromotionPhasePending {
+		t.Fatalf("phase = %q, want Pending", got.Status.Phase)
+	}
+	assertCondition(t, c, p.Name, "Ready", metav1.ConditionFalse)
 }
 
 func TestPromotionSuspendedSuspendsActiveRuns(t *testing.T) {

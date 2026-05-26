@@ -71,7 +71,7 @@ func TestFleetRoundTripsThroughYAML(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "checkout"},
 		Spec: FleetSpec{
 			SourceRef: "checkout-catalog",
-			Substrate: SubstrateBindingSpec{
+			Delivery: SubstrateBindingSpec{
 				Mode: "pull",
 				Ref:  "flux",
 			},
@@ -88,8 +88,8 @@ func TestFleetRoundTripsThroughYAML(t *testing.T) {
 	if out.Name != "checkout" {
 		t.Errorf("name lost across round-trip: %q", out.Name)
 	}
-	if out.Spec.Substrate.Ref != "flux" {
-		t.Errorf("delivery.ref lost across round-trip: %q", out.Spec.Substrate.Ref)
+	if out.Spec.Delivery.Ref != "flux" {
+		t.Errorf("delivery.ref lost across round-trip: %q", out.Spec.Delivery.Ref)
 	}
 }
 
@@ -98,7 +98,7 @@ func TestSubstrateBindingUsesDeliveryRef(t *testing.T) {
 		TypeMeta:   metav1.TypeMeta{APIVersion: "kapro.io/v1alpha1", Kind: "Fleet"},
 		ObjectMeta: metav1.ObjectMeta{Name: "checkout"},
 		Spec: FleetSpec{
-			Substrate: SubstrateBindingSpec{
+			Delivery: SubstrateBindingSpec{
 				Mode: "pull",
 				Ref:  "flux",
 			},
@@ -112,8 +112,8 @@ func TestSubstrateBindingUsesDeliveryRef(t *testing.T) {
 	if err := yaml.Unmarshal(data, &out); err != nil {
 		t.Fatalf("Unmarshal: %v", err)
 	}
-	if out.Spec.Substrate.SubstrateName() != "flux" {
-		t.Errorf("delivery ref did not resolve: %#v", out.Spec.Substrate)
+	if out.Spec.Delivery.SubstrateName() != "flux" {
+		t.Errorf("delivery ref did not resolve: %#v", out.Spec.Delivery)
 	}
 }
 
@@ -155,7 +155,7 @@ func TestDeliveryStagingRoundTripsThroughYAML(t *testing.T) {
 		TypeMeta:   metav1.TypeMeta{APIVersion: "kapro.io/v1alpha1", Kind: "Cluster"},
 		ObjectMeta: metav1.ObjectMeta{Name: "de-prod-01"},
 		Spec: ClusterSpec{
-			Substrate: SubstrateBindingSpec{
+			Delivery: SubstrateBindingSpec{
 				Mode: SubstrateModePull,
 				Ref:  "oci",
 				Staging: &DeliveryStagingSpec{
@@ -188,14 +188,14 @@ func TestDeliveryStagingRoundTripsThroughYAML(t *testing.T) {
 	if err := yaml.Unmarshal(data, &out); err != nil {
 		t.Fatalf("Unmarshal: %v", err)
 	}
-	if out.Spec.Substrate.Staging == nil {
+	if out.Spec.Delivery.Staging == nil {
 		t.Fatal("staging lost across round-trip")
 	}
-	if out.Spec.Substrate.Staging.Type != DeliveryStagingTwoPhase {
-		t.Errorf("staging.type = %q, want %q", out.Spec.Substrate.Staging.Type, DeliveryStagingTwoPhase)
+	if out.Spec.Delivery.Staging.Type != DeliveryStagingTwoPhase {
+		t.Errorf("staging.type = %q, want %q", out.Spec.Delivery.Staging.Type, DeliveryStagingTwoPhase)
 	}
-	if out.Spec.Substrate.Staging.FailurePolicy != DeliveryStagingFailureAbort {
-		t.Errorf("staging.failurePolicy = %q, want %q", out.Spec.Substrate.Staging.FailurePolicy, DeliveryStagingFailureAbort)
+	if out.Spec.Delivery.Staging.FailurePolicy != DeliveryStagingFailureAbort {
+		t.Errorf("staging.failurePolicy = %q, want %q", out.Spec.Delivery.Staging.FailurePolicy, DeliveryStagingFailureAbort)
 	}
 	status := out.Status.Delivery["api"].Staging
 	if status == nil {

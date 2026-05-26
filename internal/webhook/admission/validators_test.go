@@ -26,7 +26,7 @@ func deps(names ...string) []kaprov1alpha1.StageDependency {
 func TestValidateFleetCluster_MissingMode(t *testing.T) {
 	mc := &kaprov1alpha1.Cluster{
 		Spec: kaprov1alpha1.ClusterSpec{
-			Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: "", Ref: "flux"},
+			Delivery: kaprov1alpha1.SubstrateBindingSpec{Mode: "", Ref: "flux"},
 		},
 	}
 	if err := mcValidate(mc); err == nil {
@@ -37,7 +37,7 @@ func TestValidateFleetCluster_MissingMode(t *testing.T) {
 func TestValidateFleetCluster_MissingSubstrate(t *testing.T) {
 	mc := &kaprov1alpha1.Cluster{
 		Spec: kaprov1alpha1.ClusterSpec{
-			Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: "pull", Ref: ""},
+			Delivery: kaprov1alpha1.SubstrateBindingSpec{Mode: "pull", Ref: ""},
 		},
 	}
 	if err := mcValidate(mc); err == nil {
@@ -48,7 +48,7 @@ func TestValidateFleetCluster_MissingSubstrate(t *testing.T) {
 func TestValidateFleetCluster_FluxMissingSubSpec(t *testing.T) {
 	mc := &kaprov1alpha1.Cluster{
 		Spec: kaprov1alpha1.ClusterSpec{
-			Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: "pull", Ref: "flux"},
+			Delivery: kaprov1alpha1.SubstrateBindingSpec{Mode: "pull", Ref: "flux"},
 		},
 	}
 	if err := mcValidate(mc); err != nil {
@@ -59,7 +59,7 @@ func TestValidateFleetCluster_FluxMissingSubSpec(t *testing.T) {
 func TestValidateFleetCluster_FluxValid(t *testing.T) {
 	mc := &kaprov1alpha1.Cluster{
 		Spec: kaprov1alpha1.ClusterSpec{
-			Substrate: kaprov1alpha1.SubstrateBindingSpec{
+			Delivery: kaprov1alpha1.SubstrateBindingSpec{
 				Mode: "pull", Ref: "flux",
 				Parameters: map[string]string{"namespace": "flux-system", "ociRepository": "cluster-a"},
 			},
@@ -73,7 +73,7 @@ func TestValidateFleetCluster_FluxValid(t *testing.T) {
 func TestValidateFleetCluster_CustomSubstrateAllowed(t *testing.T) {
 	mc := &kaprov1alpha1.Cluster{
 		Spec: kaprov1alpha1.ClusterSpec{
-			Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: "pull", Ref: "kserve"},
+			Delivery: kaprov1alpha1.SubstrateBindingSpec{Mode: "pull", Ref: "kserve"},
 		},
 	}
 	if err := mcValidate(mc); err != nil {

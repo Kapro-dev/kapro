@@ -101,7 +101,7 @@ func (l *deliveryLoop) tick(ctx context.Context) error {
 	}
 
 	desired := mergedDesiredVersions(fc.Spec)
-	substrateName := fc.Spec.Substrate.SubstrateName()
+	substrateName := fc.Spec.Delivery.SubstrateName()
 	span.SetAttributes(
 		attribute.Int("kapro.desired_version_count", len(desired)),
 		attribute.String("kapro.delivery.substrate_ref", substrateName),
@@ -203,7 +203,7 @@ func (l *deliveryLoop) reconcileOneResult(
 	}
 	if profile == nil {
 		out.Phase = kaprov1alpha1.DeliveryPhaseFailed
-		out.Err = fmt.Errorf("substrate %q not found", fc.Spec.Substrate.SubstrateName())
+		out.Err = fmt.Errorf("substrate %q not found", fc.Spec.Delivery.SubstrateName())
 		return out
 	}
 	// ExecutionScope gating: if this Substrate is hub-only, the hub-side actuator owns
@@ -231,7 +231,7 @@ func (l *deliveryLoop) reconcileOneResult(
 		out.Err = err
 		return out
 	}
-	params := mergeParameters(profile.Spec.Parameters, fc.Spec.Substrate.Parameters)
+	params := mergeParameters(profile.Spec.Parameters, fc.Spec.Delivery.Parameters)
 	res := provider.Reconcile(ctx, spokeprovider.ReconcileRequest{
 		Cluster:          fc,
 		AppKey:           appKey,
@@ -304,7 +304,7 @@ func (l *deliveryLoop) writeStatus(
 			Phase:          res.Phase,
 			DesiredVersion: desired[appKey],
 			ObservedDigest: res.ObservedDigest,
-			Staging:        effectiveStagingStatus(fc.Spec.Substrate.Staging, res.Staging),
+			Staging:        effectiveStagingStatus(fc.Spec.Delivery.Staging, res.Staging),
 			AppliedObjects: res.AppliedObjects,
 			Format:         res.Format,
 		}
@@ -472,7 +472,7 @@ func substrateRef(cluster *kaprov1alpha1.Cluster) string {
 	if cluster == nil {
 		return ""
 	}
-	return cluster.Spec.Substrate.SubstrateName()
+	return cluster.Spec.Delivery.SubstrateName()
 }
 
 func substrateName(profile *kaprov1alpha1.Substrate) string {

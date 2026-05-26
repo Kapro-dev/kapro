@@ -63,7 +63,7 @@ func (r *TargetReconciler) requireFreshHeartbeat(
 	mc *kaprov1alpha1.Cluster,
 ) (ctrl.Result, bool, error) {
 	_ = ctx // ctx retained for future use (status patches, list calls)
-	if mc.Spec.Substrate.Mode != kaprov1alpha1.SubstrateModePull {
+	if mc.Spec.Delivery.Mode != kaprov1alpha1.SubstrateModePull {
 		target.HeartbeatStaleSince = ""
 		target.HeartbeatStaleCount = 0
 		return ctrl.Result{}, true, nil

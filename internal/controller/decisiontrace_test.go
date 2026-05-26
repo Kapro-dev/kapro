@@ -412,7 +412,7 @@ func TestTriggerTargetRollbackEmitsTraceWhenRollbackUnsupported(t *testing.T) {
 	cluster := &kaprov1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
 		Spec: kaprov1alpha1.ClusterSpec{
-			Substrate: kaprov1alpha1.SubstrateBindingSpec{
+			Delivery: kaprov1alpha1.SubstrateBindingSpec{
 				Mode: "pull",
 				Ref:  "rollbackless",
 			},

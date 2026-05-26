@@ -63,7 +63,7 @@ func bootstrapUsedFleetCluster(name string, threshold int32) *kaprov1alpha1.Clus
 	return &kaprov1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: name},
 		Spec: kaprov1alpha1.ClusterSpec{
-			Substrate:                   kaprov1alpha1.SubstrateBindingSpec{Mode: kaprov1alpha1.SubstrateModePull, Ref: "flux"},
+			Delivery:                    kaprov1alpha1.SubstrateBindingSpec{Mode: kaprov1alpha1.SubstrateModePull, Ref: "flux"},
 			ConsecutiveFailureThreshold: &t,
 		},
 		Status: kaprov1alpha1.ClusterStatus{
@@ -190,7 +190,7 @@ func TestHeartbeat_Suspended_NoMissAccumulation(t *testing.T) {
 func TestHeartbeat_PushMode_AlwaysReady(t *testing.T) {
 	now := time.Now()
 	fc := bootstrapUsedFleetCluster("cluster-a", 3)
-	fc.Spec.Substrate.Mode = kaprov1alpha1.SubstrateModePush
+	fc.Spec.Delivery.Mode = kaprov1alpha1.SubstrateModePush
 	r := newReconciler(t, now, fc) // no Lease
 
 	if _, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Name: "cluster-a"}}); err != nil {
@@ -211,7 +211,7 @@ func TestHeartbeat_NotYetRegistered(t *testing.T) {
 	fc := &kaprov1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
 		Spec: kaprov1alpha1.ClusterSpec{
-			Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: kaprov1alpha1.SubstrateModePull, Ref: "flux"},
+			Delivery:  kaprov1alpha1.SubstrateBindingSpec{Mode: kaprov1alpha1.SubstrateModePull, Ref: "flux"},
 			Bootstrap: &kaprov1alpha1.ClusterBootstrapSpec{TTL: tokenTTL},
 		},
 		// No Status.Bootstrap.Used — bootstrap workflow not yet complete.
@@ -237,7 +237,7 @@ func TestHeartbeat_LegacyClusterNoBootstrap_LeaseEstablishesReady(t *testing.T) 
 	fc := &kaprov1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "legacy-cluster"},
 		Spec: kaprov1alpha1.ClusterSpec{
-			Substrate: kaprov1alpha1.SubstrateBindingSpec{Mode: kaprov1alpha1.SubstrateModePull, Ref: "flux"},
+			Delivery: kaprov1alpha1.SubstrateBindingSpec{Mode: kaprov1alpha1.SubstrateModePull, Ref: "flux"},
 			// spec.Bootstrap intentionally nil — legacy / non-bootstrap path.
 		},
 	}
@@ -262,7 +262,7 @@ func TestHeartbeat_LegacyClusterNoBootstrap_MissingLeaseCountsAsMiss(t *testing.
 	fc := &kaprov1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "legacy-cluster"},
 		Spec: kaprov1alpha1.ClusterSpec{
-			Substrate:                   kaprov1alpha1.SubstrateBindingSpec{Mode: kaprov1alpha1.SubstrateModePull, Ref: "flux"},
+			Delivery:                    kaprov1alpha1.SubstrateBindingSpec{Mode: kaprov1alpha1.SubstrateModePull, Ref: "flux"},
 			ConsecutiveFailureThreshold: &threshold,
 		},
 	}

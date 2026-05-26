@@ -1137,7 +1137,7 @@ func (r *TargetReconciler) resolveActuatorForCluster(ctx context.Context, cluste
 	if cluster == nil {
 		return "", nil, actuator.Capabilities{}, fmt.Errorf("cluster is nil")
 	}
-	delivery := cluster.Spec.Substrate
+	delivery := cluster.Spec.Delivery
 	key := delivery.RegistryKey()
 	substrateName := delivery.SubstrateName()
 	var substrate *kaprov1alpha1.Substrate
@@ -1313,11 +1313,11 @@ func capturePreviousVersions(target *kaprov1alpha1.TargetExecutionState, mc *kap
 }
 
 func validateTargetTopology(mc *kaprov1alpha1.Cluster, desiredVersions map[string]string) error {
-	if len(desiredVersions) <= 1 || mc.Spec.Substrate.Mode != kaprov1alpha1.SubstrateModePull || mc.Spec.Substrate.SubstrateName() != "flux" {
+	if len(desiredVersions) <= 1 || mc.Spec.Delivery.Mode != kaprov1alpha1.SubstrateModePull || mc.Spec.Delivery.SubstrateName() != "flux" {
 		return nil
 	}
 	for appKey := range desiredVersions {
-		if mc.Spec.Substrate.Parameters["ociRepository."+appKey] == "" {
+		if mc.Spec.Delivery.Parameters["ociRepository."+appKey] == "" {
 			return fmt.Errorf("cluster %s is missing substrate.parameters[%q] required for multi-artifact flux delivery", mc.Name, "ociRepository."+appKey)
 		}
 	}
