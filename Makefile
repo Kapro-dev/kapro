@@ -86,6 +86,7 @@ proto: ## Generate Go stubs from KAI/KGI/KPI proto contracts
 			--go-grpc_out=. --go-grpc_opt=paths=source_relative \
 			$(PROTO_FILES); \
 	fi
+	gofmt -w spec/kai/v1alpha1/*.pb.go spec/kgi/v1alpha1/*.pb.go spec/kpi/v1alpha1/*.pb.go
 
 .PHONY: check-proto
 check-proto: proto ## Verify generated proto stubs are up to date
