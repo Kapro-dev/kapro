@@ -218,7 +218,8 @@ func waitForBootstrapSecret(ctx context.Context, c client.Client, name string, t
 			return true, nil
 		}
 		if stalled := apimeta.FindStatusCondition(fc.Status.Conditions, kaprov1alpha1.ConditionTypeStalled); stalled != nil &&
-			stalled.Status == metav1.ConditionTrue {
+			stalled.Status == metav1.ConditionTrue &&
+			stalled.ObservedGeneration == fc.Generation {
 			return false, fmt.Errorf("cluster bootstrap stalled: %s: %s", stalled.Reason, stalled.Message)
 		}
 		return false, nil

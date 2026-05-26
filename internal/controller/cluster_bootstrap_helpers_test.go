@@ -414,6 +414,19 @@ func TestIsKaproCSR(t *testing.T) {
 		}
 	})
 
+	t.Run("empty subject alt name extension rejected", func(t *testing.T) {
+		csr := makeCSRFromTemplate(t, csrSigner, &x509.CertificateRequest{
+			Subject: pkix.Name{CommonName: "kapro-cluster:de-prod-01", Organization: []string{csrOrganization}},
+			ExtraExtensions: []pkix.Extension{{
+				Id:    subjectAltNameExtensionOID,
+				Value: []byte{0x30, 0x00},
+			}},
+		}, []certificatesv1.KeyUsage{certificatesv1.UsageClientAuth})
+		if isKaproCSR(csr) {
+			t.Error("CSR with SAN extension OID must be rejected even when typed SAN fields are empty")
+		}
+	})
+
 	t.Run("malformed request PEM", func(t *testing.T) {
 		csr := &certificatesv1.CertificateSigningRequest{
 			Spec: certificatesv1.CertificateSigningRequestSpec{

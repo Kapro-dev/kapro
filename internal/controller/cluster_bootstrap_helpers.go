@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"crypto/x509"
+	"encoding/asn1"
 	"encoding/pem"
 	"fmt"
 	"reflect"
@@ -25,6 +26,8 @@ import (
 
 	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
+
+var subjectAltNameExtensionOID = asn1.ObjectIdentifier{2, 5, 29, 17}
 
 // ---- CSR predicates & parsing ----------------------------------------------
 
@@ -80,10 +83,18 @@ func hasSubjectAltNames(req *x509.CertificateRequest) bool {
 	if req == nil {
 		return false
 	}
-	return len(req.DNSNames) > 0 ||
+	if len(req.DNSNames) > 0 ||
 		len(req.EmailAddresses) > 0 ||
 		len(req.IPAddresses) > 0 ||
-		len(req.URIs) > 0
+		len(req.URIs) > 0 {
+		return true
+	}
+	for _, extension := range append(req.Extensions, req.ExtraExtensions...) {
+		if extension.Id.Equal(subjectAltNameExtensionOID) {
+			return true
+		}
+	}
+	return false
 }
 
 func isCSRApproved(csr *certificatesv1.CertificateSigningRequest) bool {
