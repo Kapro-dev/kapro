@@ -32,6 +32,15 @@ require_text() {
   fi
 }
 
+reject_text() {
+  local path="$1"
+  local text="$2"
+  if grep -Fq -- "${text}" "${path}"; then
+    echo "expected ${path} not to contain: ${text}" >&2
+    exit 1
+  fi
+}
+
 cd "${ROOT}"
 
 if [[ ! -x "${KAPRO_BIN}" ]]; then
@@ -43,7 +52,7 @@ kapro() {
   "${KAPRO_BIN}" "$@"
 }
 
-echo "smoke: greenfield argo repo-first"
+echo "smoke: new-repo argo repo-first"
 kapro init "${TMPDIR}/repo-first" --substrate argo --name checkout --clusters none --force >/dev/null
 require_file "${TMPDIR}/repo-first/substrates/argo.yaml"
 require_file "${TMPDIR}/repo-first/deliveryunits/checkout.yaml"
@@ -54,29 +63,29 @@ reject_path "${TMPDIR}/repo-first/fleets"
 reject_path "${TMPDIR}/repo-first/promotionruns"
 reject_path "${TMPDIR}/repo-first/promotions"
 
-echo "smoke: greenfield flux pull with cluster inventory"
-kapro init "${TMPDIR}/greenfield-flux" --substrate flux --name checkout --mode pull --force >/dev/null
-require_file "${TMPDIR}/greenfield-flux/substrates/flux.yaml"
-require_file "${TMPDIR}/greenfield-flux/clusters/canary-eu.yaml"
-require_file "${TMPDIR}/greenfield-flux/clusters/prod-eu.yaml"
-require_file "${TMPDIR}/greenfield-flux/fleets/checkout.yaml"
-require_file "${TMPDIR}/greenfield-flux/promotions/checkout-promotion.yaml"
-require_text "${TMPDIR}/greenfield-flux/clusters/canary-eu.yaml" "substrateRef: flux"
-require_text "${TMPDIR}/greenfield-flux/clusters/canary-eu.yaml" "ociRepository: checkout-bundle"
-require_text "${TMPDIR}/greenfield-flux/clusters/canary-eu.yaml" "kapro.io/stage: canary"
-require_text "${TMPDIR}/greenfield-flux/clusters/prod-eu.yaml" "kapro.io/stage: production"
-require_text "${TMPDIR}/greenfield-flux/promotions/checkout-promotion.yaml" "kind: Promotion"
-require_text "${TMPDIR}/greenfield-flux/promotions/checkout-promotion.yaml" "fleetRef: checkout"
-require_text "${TMPDIR}/greenfield-flux/promotions/checkout-promotion.yaml" "timeout: 30m"
+echo "smoke: new-repo flux pull with cluster inventory"
+kapro init "${TMPDIR}/new-repo-flux" --substrate flux --name checkout --mode pull --force >/dev/null
+require_file "${TMPDIR}/new-repo-flux/substrates/flux.yaml"
+require_file "${TMPDIR}/new-repo-flux/clusters/canary-eu.yaml"
+require_file "${TMPDIR}/new-repo-flux/clusters/prod-eu.yaml"
+require_file "${TMPDIR}/new-repo-flux/fleets/checkout.yaml"
+require_file "${TMPDIR}/new-repo-flux/promotions/checkout-promotion.yaml"
+require_text "${TMPDIR}/new-repo-flux/clusters/canary-eu.yaml" "ref: flux"
+require_text "${TMPDIR}/new-repo-flux/clusters/canary-eu.yaml" "ociRepository: checkout-bundle"
+require_text "${TMPDIR}/new-repo-flux/clusters/canary-eu.yaml" "kapro.io/stage: canary"
+require_text "${TMPDIR}/new-repo-flux/clusters/prod-eu.yaml" "kapro.io/stage: production"
+require_text "${TMPDIR}/new-repo-flux/promotions/checkout-promotion.yaml" "kind: Promotion"
+require_text "${TMPDIR}/new-repo-flux/promotions/checkout-promotion.yaml" "fleetRef: checkout"
+require_text "${TMPDIR}/new-repo-flux/promotions/checkout-promotion.yaml" "timeout: 30m"
 
-echo "smoke: guided bootstrap greenfield defaults"
-kapro bootstrap greenfield "${TMPDIR}/bootstrap-greenfield" --name checkout --force >/dev/null
-require_file "${TMPDIR}/bootstrap-greenfield/substrates/direct.yaml"
-require_file "${TMPDIR}/bootstrap-greenfield/apps/checkout/deployment.yaml"
-require_file "${TMPDIR}/bootstrap-greenfield/fleets/checkout.yaml"
-require_file "${TMPDIR}/bootstrap-greenfield/promotions/checkout-promotion.yaml"
-require_text "${TMPDIR}/bootstrap-greenfield/clusters/canary-eu.yaml" "mode: push"
-require_text "${TMPDIR}/bootstrap-greenfield/clusters/canary-eu.yaml" "substrateRef: direct"
+echo "smoke: guided bootstrap new-repo defaults"
+kapro bootstrap new-repo "${TMPDIR}/bootstrap-new-repo" --name checkout --force >/dev/null
+require_file "${TMPDIR}/bootstrap-new-repo/substrates/direct.yaml"
+require_file "${TMPDIR}/bootstrap-new-repo/apps/checkout/deployment.yaml"
+require_file "${TMPDIR}/bootstrap-new-repo/fleets/checkout.yaml"
+require_file "${TMPDIR}/bootstrap-new-repo/promotions/checkout-promotion.yaml"
+require_text "${TMPDIR}/bootstrap-new-repo/clusters/canary-eu.yaml" "mode: push"
+require_text "${TMPDIR}/bootstrap-new-repo/clusters/canary-eu.yaml" "ref: direct"
 
 echo "smoke: bootstrap generate direct profile"
 kapro bootstrap generate "${TMPDIR}/generate-direct" --profile direct --name checkout --force >/dev/null
@@ -85,7 +94,7 @@ require_file "${TMPDIR}/generate-direct/apps/checkout/deployment.yaml"
 require_file "${TMPDIR}/generate-direct/fleets/checkout.yaml"
 require_text "${TMPDIR}/generate-direct/substrates/direct.yaml" "kind: KubernetesApplyConfig"
 require_text "${TMPDIR}/generate-direct/substrates/direct.yaml" "name: kubernetes-apply"
-require_text "${TMPDIR}/generate-direct/clusters/canary-eu.yaml" "substrateRef: direct"
+require_text "${TMPDIR}/generate-direct/clusters/canary-eu.yaml" "ref: direct"
 require_text "${TMPDIR}/generate-direct/deliveryunits/checkout.yaml" "substrateKind: KubernetesManifest"
 
 echo "smoke: bootstrap generate argo profile"
@@ -109,7 +118,7 @@ require_file "${TMPDIR}/generate-flux/flux/kustomizations/checkout.yaml"
 require_text "${TMPDIR}/generate-flux/substrates/flux.yaml" "kind: FluxSubstrateConfig"
 require_text "${TMPDIR}/generate-flux/substrates/flux.yaml" "name: flux"
 require_text "${TMPDIR}/generate-flux/flux/kustomizations/checkout.yaml" "kind: GitRepository"
-require_text "${TMPDIR}/generate-flux/clusters/canary-eu.yaml" "substrateRef: flux"
+require_text "${TMPDIR}/generate-flux/clusters/canary-eu.yaml" "ref: flux"
 
 echo "smoke: bootstrap generate OCI profile"
 kapro bootstrap generate "${TMPDIR}/generate-oci" --profile oci --name checkout --force >/dev/null
@@ -118,7 +127,7 @@ require_file "${TMPDIR}/generate-oci/fleets/checkout.yaml"
 require_file "${TMPDIR}/generate-oci/promotions/checkout-promotion.yaml"
 require_text "${TMPDIR}/generate-oci/substrates/oci.yaml" "kind: OCIBundleApplyConfig"
 require_text "${TMPDIR}/generate-oci/substrates/oci.yaml" "mode: spoke-pull"
-require_text "${TMPDIR}/generate-oci/clusters/canary-eu.yaml" "substrateRef: oci"
+require_text "${TMPDIR}/generate-oci/clusters/canary-eu.yaml" "ref: oci"
 
 echo "smoke: public create direct default"
 kapro create "${TMPDIR}/create-direct" --name checkout --force >/dev/null
@@ -126,7 +135,7 @@ require_file "${TMPDIR}/create-direct/substrates/direct.yaml"
 require_file "${TMPDIR}/create-direct/apps/checkout/deployment.yaml"
 require_text "${TMPDIR}/create-direct/substrates/direct.yaml" "kind: KubernetesApplyConfig"
 require_text "${TMPDIR}/create-direct/clusters/canary-eu.yaml" "mode: push"
-require_text "${TMPDIR}/create-direct/clusters/canary-eu.yaml" "substrateRef: direct"
+require_text "${TMPDIR}/create-direct/clusters/canary-eu.yaml" "ref: direct"
 
 echo "smoke: public create argo"
 kapro create argo "${TMPDIR}/create-argo" --name checkout --force >/dev/null
@@ -174,10 +183,14 @@ fi
 echo "smoke: existing Argo CD connect"
 kapro connect argo "${TMPDIR}/connect-argo" --namespace argocd --selector kapro.io/import=true,team=checkout --force >/dev/null
 require_file "${TMPDIR}/connect-argo/substrates/argo-observe.yaml"
-require_text "${TMPDIR}/connect-argo/substrates/argo-observe.yaml" "kind: argo"
+require_text "${TMPDIR}/connect-argo/substrates/argo-observe.yaml" "kind: SubstrateClass"
+require_text "${TMPDIR}/connect-argo/substrates/argo-observe.yaml" "kind: ArgoCDSubstrateConfig"
+require_text "${TMPDIR}/connect-argo/substrates/argo-observe.yaml" "classRef:"
+require_text "${TMPDIR}/connect-argo/substrates/argo-observe.yaml" "configRef:"
 require_text "${TMPDIR}/connect-argo/substrates/argo-observe.yaml" "mode: hub-push"
 require_text "${TMPDIR}/connect-argo/substrates/argo-observe.yaml" "managementPolicy: Observe"
 require_text "${TMPDIR}/connect-argo/substrates/argo-observe.yaml" "team: \"checkout\""
+reject_text "${TMPDIR}/connect-argo/substrates/argo-observe.yaml" "actuator:"
 require_text "${TMPDIR}/connect-argo/README.md" "switch managementPolicy from Observe to"
 require_text "${TMPDIR}/connect-argo/README.md" "Adopt"
 require_text "${TMPDIR}/connect-argo/README.md" "does not copy Argo CD or Flux credentials"
@@ -230,20 +243,24 @@ require_file "${TMPDIR}/import-argo/discovery/kapro-git-map.yaml"
 kapro source apply --repo "${TMPDIR}/argo-repo" --source "${TMPDIR}/discover-argo/deliveryunits/checkout.yaml" --set checkout-api=2.0.0 --all >/dev/null
 require_text "${TMPDIR}/argo-repo/argocd/environments/dev.json" '"gkProjectVersion": "2.0.0"'
 
-echo "smoke: existing Argo CD import takeover"
-kapro import argo "${TMPDIR}/argo-repo" --out "${TMPDIR}/take-argo" --name checkout --take --force >/dev/null
-require_file "${TMPDIR}/take-argo/substrates/checkout-adopt.yaml"
-require_file "${TMPDIR}/take-argo/deliveryunits/checkout.yaml"
-require_file "${TMPDIR}/take-argo/discovery/kapro-git-map.yaml"
-require_text "${TMPDIR}/take-argo/substrates/checkout-adopt.yaml" "managementPolicy: Adopt"
+echo "smoke: existing Argo CD import adopt"
+kapro import argo "${TMPDIR}/argo-repo" --out "${TMPDIR}/adopt-argo" --name checkout --adopt --force >/dev/null
+require_file "${TMPDIR}/adopt-argo/substrates/checkout-adopt.yaml"
+require_file "${TMPDIR}/adopt-argo/deliveryunits/checkout.yaml"
+require_file "${TMPDIR}/adopt-argo/discovery/kapro-git-map.yaml"
+require_text "${TMPDIR}/adopt-argo/substrates/checkout-adopt.yaml" "managementPolicy: Adopt"
 
 echo "smoke: existing Flux connect"
 kapro connect flux "${TMPDIR}/connect-flux" --namespace flux-system --selector kapro.io/import=true,team=checkout --force >/dev/null
 require_file "${TMPDIR}/connect-flux/substrates/flux-observe.yaml"
-require_text "${TMPDIR}/connect-flux/substrates/flux-observe.yaml" "kind: flux"
+require_text "${TMPDIR}/connect-flux/substrates/flux-observe.yaml" "kind: SubstrateClass"
+require_text "${TMPDIR}/connect-flux/substrates/flux-observe.yaml" "kind: FluxSubstrateConfig"
+require_text "${TMPDIR}/connect-flux/substrates/flux-observe.yaml" "classRef:"
+require_text "${TMPDIR}/connect-flux/substrates/flux-observe.yaml" "configRef:"
 require_text "${TMPDIR}/connect-flux/substrates/flux-observe.yaml" "mode: hub-push"
 require_text "${TMPDIR}/connect-flux/substrates/flux-observe.yaml" "managementPolicy: Observe"
 require_text "${TMPDIR}/connect-flux/substrates/flux-observe.yaml" "team: \"checkout\""
+reject_text "${TMPDIR}/connect-flux/substrates/flux-observe.yaml" "actuator:"
 
 echo "smoke: existing Flux import"
 mkdir -p "${TMPDIR}/flux-repo/flux/sources" "${TMPDIR}/flux-repo/flux/kustomizations" "${TMPDIR}/flux-repo/apps/web"

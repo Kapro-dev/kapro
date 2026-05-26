@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -25,6 +26,24 @@ func TestBootstrapGuideExplainsAdoptionPaths(t *testing.T) {
 	}
 }
 
+func TestBootstrapHelpShowsNewRepoNotLegacyTerm(t *testing.T) {
+	var buf bytes.Buffer
+	cmd := newBootstrapCmd()
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+	cmd.SetArgs([]string{"--help"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	got := buf.String()
+	if !strings.Contains(got, "new-repo") {
+		t.Fatalf("bootstrap help missing new-repo command:\n%s", got)
+	}
+	if strings.Contains(got, "greenfield") {
+		t.Fatalf("bootstrap help should not show legacy term:\n%s", got)
+	}
+}
+
 func TestBootstrapDirectAliasDefaults(t *testing.T) {
 	dir := t.TempDir()
 	cmd := newBootstrapSubstrateCmd("direct")
@@ -33,7 +52,7 @@ func TestBootstrapDirectAliasDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 	cluster := readFile(t, filepath.Join(dir, "clusters/canary-eu.yaml"))
-	for _, want := range []string{"mode: push", "substrateRef: direct", "manifestPath: apps/checkout"} {
+	for _, want := range []string{"mode: push", "ref: direct", "manifestPath: apps/checkout"} {
 		if !strings.Contains(cluster, want) {
 			t.Fatalf("cluster missing %q:\n%s", want, cluster)
 		}
@@ -48,16 +67,16 @@ func TestBootstrapSubstrateAliasDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 	cluster := readFile(t, filepath.Join(dir, "clusters/canary-eu.yaml"))
-	for _, want := range []string{"mode: push", "substrateRef: argo"} {
+	for _, want := range []string{"mode: push", "ref: argo"} {
 		if !strings.Contains(cluster, want) {
 			t.Fatalf("cluster missing %q:\n%s", want, cluster)
 		}
 	}
 }
 
-func TestBootstrapGreenfieldCommandDefaultsToDirectPush(t *testing.T) {
+func TestBootstrapNewRepoCommandDefaultsToDirectPush(t *testing.T) {
 	dir := t.TempDir()
-	cmd := newBootstrapGreenfieldCmd()
+	cmd := newBootstrapNewRepoCmd()
 	cmd.SetArgs([]string{dir, "--name", "checkout"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
@@ -70,10 +89,22 @@ func TestBootstrapGreenfieldCommandDefaultsToDirectPush(t *testing.T) {
 		}
 	}
 	cluster := readFile(t, filepath.Join(dir, "clusters/canary-eu.yaml"))
-	for _, want := range []string{"mode: push", "substrateRef: direct", "manifestPath: apps/checkout"} {
+	for _, want := range []string{"mode: push", "ref: direct", "manifestPath: apps/checkout"} {
 		if !strings.Contains(cluster, want) {
 			t.Fatalf("cluster missing %q:\n%s", want, cluster)
 		}
+	}
+}
+
+func TestBootstrapLegacyNewRepoCommandStillWorks(t *testing.T) {
+	dir := t.TempDir()
+	cmd := newBootstrapLegacyNewRepoCmd()
+	cmd.SetArgs([]string{dir, "--name", "checkout"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "substrates/direct.yaml")); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -99,7 +130,7 @@ func TestBootstrapGenerateDirectProfileWritesSubstrateClassRepo(t *testing.T) {
 		}
 	}
 	cluster := readFile(t, filepath.Join(dir, "clusters/canary-eu.yaml"))
-	for _, want := range []string{"mode: push", "substrateRef: direct", "manifestPath: apps/checkout"} {
+	for _, want := range []string{"mode: push", "ref: direct", "manifestPath: apps/checkout"} {
 		if !strings.Contains(cluster, want) {
 			t.Fatalf("direct cluster missing %q:\n%s", want, cluster)
 		}
@@ -148,7 +179,7 @@ func TestBootstrapGenerateArgocdProfileWritesClassConfig(t *testing.T) {
 		}
 	}
 	cluster := readFile(t, filepath.Join(dir, "clusters/canary-eu.yaml"))
-	for _, want := range []string{"mode: push", "substrateRef: argo", "application: checkout-canary-eu"} {
+	for _, want := range []string{"mode: push", "ref: argo", "application: checkout-canary-eu"} {
 		if !strings.Contains(cluster, want) {
 			t.Fatalf("argocd cluster missing %q:\n%s", want, cluster)
 		}
@@ -213,7 +244,7 @@ func TestBootstrapGenerateOCIProfileWritesClassConfig(t *testing.T) {
 		}
 	}
 	cluster := readFile(t, filepath.Join(dir, "clusters/canary-eu.yaml"))
-	for _, want := range []string{"mode: pull", "substrateRef: oci"} {
+	for _, want := range []string{"mode: pull", "ref: oci"} {
 		if !strings.Contains(cluster, want) {
 			t.Fatalf("oci cluster missing %q:\n%s", want, cluster)
 		}
@@ -248,10 +279,13 @@ func TestBootstrapExistingGitOpsFluxWritesObserveMapping(t *testing.T) {
 	}
 
 	substrate := readFile(t, filepath.Join(out, "substrates/checkout-observe.yaml"))
-	for _, want := range []string{"kind: flux", "mode: hub-push", "managementPolicy: Observe"} {
+	for _, want := range []string{"kind: SubstrateClass", "kind: FluxSubstrateConfig", "classRef:", "configRef:", "mode: hub-push", "managementPolicy: Observe"} {
 		if !strings.Contains(substrate, want) {
 			t.Fatalf("substrate missing %q:\n%s", want, substrate)
 		}
+	}
+	if strings.Contains(substrate, "actuator:") {
+		t.Fatalf("observe mapping should not emit legacy actuator field:\n%s", substrate)
 	}
 	source := readFile(t, filepath.Join(out, "deliveryunits/checkout.yaml"))
 	for _, want := range []string{"kind: DeliveryUnit", "source:", "substrateKind: GitYAMLField", "versionField: spec.ref.tag"} {

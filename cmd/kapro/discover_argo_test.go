@@ -112,6 +112,21 @@ spec:
 	if err != nil {
 		t.Fatal(err)
 	}
+	substrate := readFile(t, filepath.Join(out, "substrates/checkout-observe.yaml"))
+	for _, want := range []string{
+		"kind: SubstrateClass",
+		"kind: ArgoCDSubstrateConfig",
+		"classRef:",
+		"configRef:",
+		"managementPolicy: Observe",
+	} {
+		if !strings.Contains(substrate, want) {
+			t.Fatalf("substrate missing %q:\n%s", want, substrate)
+		}
+	}
+	if strings.Contains(substrate, "actuator:") {
+		t.Fatalf("substrate should not emit legacy actuator field:\n%s", substrate)
+	}
 	source := readFile(t, filepath.Join(out, "deliveryunits/checkout.yaml"))
 	for _, want := range []string{
 		"kind: DeliveryUnit",

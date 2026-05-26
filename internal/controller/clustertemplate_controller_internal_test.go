@@ -189,8 +189,8 @@ func TestFleetClusterTemplate_ImportsDiscoveredClusters(t *testing.T) {
 		if fc.Spec.Provider == nil || fc.Spec.Provider.Kind != "gcp-fleet" {
 			t.Errorf("%s missing derived provider: %+v", fc.Name, fc.Spec.Provider)
 		}
-		if fc.Spec.Substrate.SubstrateRef != "oci" {
-			t.Errorf("%s wrong substrateRef: %q", fc.Name, fc.Spec.Substrate.SubstrateRef)
+		if fc.Spec.Substrate.SubstrateName() != "oci" {
+			t.Errorf("%s wrong substrate ref: %q", fc.Name, fc.Spec.Substrate.SubstrateName())
 		}
 		if len(fc.OwnerReferences) != 1 || fc.OwnerReferences[0].Name != tmpl.Name {
 			t.Errorf("%s missing ownerReference to template", fc.Name)
@@ -295,7 +295,7 @@ func TestFleetClusterTemplate_LeavesUnmanagedClustersAlone(t *testing.T) {
 	if got.Labels[kaprov1alpha1.ClusterTemplateManagedByLabel] == kaprov1alpha1.ClusterTemplateManagedByValue {
 		t.Errorf("unmanaged FleetCluster was claimed by the template")
 	}
-	if got.Spec.Substrate.SubstrateRef != "flux" {
+	if got.Spec.Substrate.SubstrateName() != "flux" {
 		t.Errorf("hand-authored spec mutated: %+v", got.Spec.Substrate)
 	}
 }

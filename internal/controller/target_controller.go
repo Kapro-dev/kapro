@@ -1139,35 +1139,36 @@ func (r *TargetReconciler) resolveActuatorForCluster(ctx context.Context, cluste
 	}
 	delivery := cluster.Spec.Substrate
 	key := delivery.RegistryKey()
+	substrateName := delivery.SubstrateName()
 	var substrate *kaprov1alpha1.Substrate
-	if r.Client != nil && delivery.SubstrateRef != "" {
+	if r.Client != nil && substrateName != "" {
 		loaded := &kaprov1alpha1.Substrate{}
-		if getErr := r.Get(ctx, client.ObjectKey{Name: delivery.SubstrateRef}, loaded); getErr == nil {
+		if getErr := r.Get(ctx, client.ObjectKey{Name: substrateName}, loaded); getErr == nil {
 			if err := requireTargetReadySubstrate(loaded); err != nil {
 				return key, nil, actuator.Capabilities{}, err
 			}
 			substrate = loaded
 		} else if apierrors.IsNotFound(getErr) {
-			return key, nil, actuator.Capabilities{}, fmt.Errorf("substrate %q not found", delivery.SubstrateRef)
+			return key, nil, actuator.Capabilities{}, fmt.Errorf("substrate %q not found", substrateName)
 		} else {
-			return key, nil, actuator.Capabilities{}, fmt.Errorf("lookup substrate %q: %w", delivery.SubstrateRef, getErr)
+			return key, nil, actuator.Capabilities{}, fmt.Errorf("lookup substrate %q: %w", substrateName, getErr)
 		}
 	}
 	act, err := r.ActuatorRegistry.Resolve(key)
 	if err == nil {
 		return key, act, actuatorCapabilitiesFor(r.ActuatorRegistry, key), nil
 	}
-	if r.Client == nil || delivery.SubstrateRef == "" {
+	if r.Client == nil || substrateName == "" {
 		return key, nil, actuator.Capabilities{}, err
 	}
 
 	if substrate == nil {
 		loaded := &kaprov1alpha1.Substrate{}
-		if getErr := r.Get(ctx, client.ObjectKey{Name: delivery.SubstrateRef}, loaded); getErr != nil {
+		if getErr := r.Get(ctx, client.ObjectKey{Name: substrateName}, loaded); getErr != nil {
 			if apierrors.IsNotFound(getErr) {
-				return key, nil, actuator.Capabilities{}, fmt.Errorf("resolve actuator %q: %w; substrate %q not found", key, err, delivery.SubstrateRef)
+				return key, nil, actuator.Capabilities{}, fmt.Errorf("resolve actuator %q: %w; substrate %q not found", key, err, substrateName)
 			}
-			return key, nil, actuator.Capabilities{}, fmt.Errorf("resolve actuator %q: %w; lookup substrate %q: %v", key, err, delivery.SubstrateRef, getErr)
+			return key, nil, actuator.Capabilities{}, fmt.Errorf("resolve actuator %q: %w; lookup substrate %q: %v", key, err, substrateName, getErr)
 		}
 		if err := requireTargetReadySubstrate(loaded); err != nil {
 			return key, nil, actuator.Capabilities{}, err
@@ -1312,7 +1313,7 @@ func capturePreviousVersions(target *kaprov1alpha1.TargetExecutionState, mc *kap
 }
 
 func validateTargetTopology(mc *kaprov1alpha1.Cluster, desiredVersions map[string]string) error {
-	if len(desiredVersions) <= 1 || mc.Spec.Substrate.Mode != kaprov1alpha1.SubstrateModePull || mc.Spec.Substrate.SubstrateRef != "flux" {
+	if len(desiredVersions) <= 1 || mc.Spec.Substrate.Mode != kaprov1alpha1.SubstrateModePull || mc.Spec.Substrate.SubstrateName() != "flux" {
 		return nil
 	}
 	for appKey := range desiredVersions {

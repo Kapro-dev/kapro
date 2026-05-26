@@ -23,7 +23,7 @@ cluster provisioner, or secret store.
 
 - [Concepts](concepts/concepts.md) explains the API objects and lifecycle.
 - [Install](getting-started/install.md) shows the supported operator install paths.
-- [Adoption Guide](getting-started/adoption.md) helps choose greenfield,
+- [Adoption Guide](getting-started/adoption.md) helps choose new-repo,
   existing Argo CD, existing Flux, or OCI pull mode.
 - [Adoption CLI](getting-started/adoption-cli.md) shows the guided `kapro create`,
   `kapro sample`, `kapro doctor`, and `kapro explain` paths.

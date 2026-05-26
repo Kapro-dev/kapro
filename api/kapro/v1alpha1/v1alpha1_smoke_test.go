@@ -72,8 +72,8 @@ func TestFleetRoundTripsThroughYAML(t *testing.T) {
 		Spec: FleetSpec{
 			SourceRef: "checkout-catalog",
 			Substrate: SubstrateBindingSpec{
-				Mode:         "pull",
-				SubstrateRef: "flux",
+				Mode: "pull",
+				Ref:  "flux",
 			},
 		},
 	}
@@ -88,8 +88,32 @@ func TestFleetRoundTripsThroughYAML(t *testing.T) {
 	if out.Name != "checkout" {
 		t.Errorf("name lost across round-trip: %q", out.Name)
 	}
-	if out.Spec.Substrate.SubstrateRef != "flux" {
-		t.Errorf("substrateRef lost across round-trip: %q", out.Spec.Substrate.SubstrateRef)
+	if out.Spec.Substrate.Ref != "flux" {
+		t.Errorf("substrate.ref lost across round-trip: %q", out.Spec.Substrate.Ref)
+	}
+}
+
+func TestSubstrateBindingAcceptsDeprecatedSubstrateRef(t *testing.T) {
+	in := &Fleet{
+		TypeMeta:   metav1.TypeMeta{APIVersion: "kapro.io/v1alpha1", Kind: "Fleet"},
+		ObjectMeta: metav1.ObjectMeta{Name: "checkout"},
+		Spec: FleetSpec{
+			Substrate: SubstrateBindingSpec{
+				Mode:         "pull",
+				SubstrateRef: "flux",
+			},
+		},
+	}
+	data, err := yaml.Marshal(in)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	var out Fleet
+	if err := yaml.Unmarshal(data, &out); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if out.Spec.Substrate.SubstrateName() != "flux" {
+		t.Errorf("deprecated substrateRef did not resolve: %#v", out.Spec.Substrate)
 	}
 }
 
@@ -132,8 +156,8 @@ func TestDeliveryStagingRoundTripsThroughYAML(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "de-prod-01"},
 		Spec: ClusterSpec{
 			Substrate: SubstrateBindingSpec{
-				Mode:         SubstrateModePull,
-				SubstrateRef: "oci",
+				Mode: SubstrateModePull,
+				Ref:  "oci",
 				Staging: &DeliveryStagingSpec{
 					Type:          DeliveryStagingTwoPhase,
 					FailurePolicy: DeliveryStagingFailureAbort,

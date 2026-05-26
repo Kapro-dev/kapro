@@ -11,11 +11,11 @@ release evidence.
 | New Argo CD repo | `kapro create argo ./promotion-repo --name checkout` | Generates Argo `Application` starter files and Kapro promotion objects. |
 | New Flux repo | `kapro create flux ./promotion-repo --name checkout` | Generates Flux starter files and Kapro promotion objects. |
 | New OCI pull repo | `kapro create oci ./promotion-repo --name checkout` | Generates OCI pull substrate objects without making OCI the default path. |
-| Existing Argo CD repo | `kapro import argo . --out ./kapro-connect --name checkout` | Starts observe-first and writes reviewable discovery files; `--take` is explicit takeover. |
-| Existing Flux repo | `kapro import flux . --out ./kapro-connect --name checkout` | Starts observe-first and writes reviewable discovery files; `--take` is explicit takeover. |
+| Existing Argo CD repo | `kapro import argo . --out ./kapro-connect --name checkout` | Starts observe-first and writes reviewable discovery files; `--adopt` grants write ownership only after review. |
+| Existing Flux repo | `kapro import flux . --out ./kapro-connect --name checkout` | Starts observe-first and writes reviewable discovery files; `--adopt` grants write ownership only after review. |
 | Generator/framework path | `kapro bootstrap generate --profile direct|argo|flux|oci` | Produces the same launch profile matrix used by create. |
 
-`create` is the public greenfield command. `import` is the public
+`create` is the public command for new promotion repositories. `import` is the public
 existing-GitOps command. `connect` and `discover` remain lower-level commands
 for substrate-only scaffolds and inventory workflows.
 

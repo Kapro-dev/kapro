@@ -12,8 +12,9 @@ exists to show the contract and to anchor the CI guarantee.
 
 | Field | Plain meaning |
 |---|---|
-| `spec.substrate.kind` | The delivery domain. Open string. Built-ins: `argo`, `flux`, `oci`, `kubernetes-apply`. Custom: anything that matches `^[a-z][a-z0-9-]{0,62}$`. |
-| `spec.substrate.actuator` | The concrete implementation registered under the kind. Optional for built-ins (defaulted from kind); set explicitly for custom substrates like this one. |
+| `SubstrateClass.metadata.name` | The delivery domain. Built-ins: `argo`, `flux`, `oci`, `kubernetes-apply`. Custom classes use a platform-owned name like `hello-world`. |
+| `SubstrateClass.spec.controllerName` | The controller or plugin owner for the class. Use a domain-prefixed value such as `example.com/hello-world` for custom substrates. |
+| `Substrate.spec.classRef.name` | Selects the class a `Substrate` instance uses. |
 | `spec.execution.mode` | Where Kapro runs the actuator. `hub-push` for in-process Go actuators like this one; `spoke-pull` for cluster-agent-driven delivery; `external-pull` for systems that consume Kapro decisions out-of-band. |
 | `BoolFunc` | Sugar wrapper that adapts a `(ctx, req) -> (bool, string, error)` function to the full `actuator.Actuator` interface. Use for trivial substrates and tests. |
 
@@ -39,6 +40,10 @@ synthetic request. Production usage would wire the substrate into
 kubectl apply -f substrate.yaml
 kubectl get substrate hello-world -o yaml
 ```
+
+The standalone binary demonstrates the Go actuator SDK. A production custom
+substrate also runs a controller or plugin that accepts the `SubstrateClass` and
+writes class status.
 
 After a promotion targets a cluster whose Substrate points at this substrate,
 inspect the decision trail:

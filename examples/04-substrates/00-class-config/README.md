@@ -4,7 +4,7 @@ These examples show the v1alpha1 substrate class/config path.
 
 `SubstrateClass` is the admin-owned capability object. `Substrate` remains the
 configured delivery instance that `Fleet`, `Cluster`, and `Promotion` objects
-already reference through `delivery.substrateRef`.
+already reference through `spec.substrate.ref`.
 
 The operator writes `SubstrateClass.status`; do not copy status fields into
 Git. Apply the class and config manifests, enable the `substrateclass` and

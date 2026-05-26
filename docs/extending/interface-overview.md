@@ -50,6 +50,12 @@ KSI and KAI are not duplicate CRDs. KSI models the in-process substrate contract
 inside Kapro. KAI is the out-of-process actuator RPC contract reached through
 the plugin gateway.
 
+In `v0.6.x`, KSI itself is not yet a language-neutral gRPC contract. External
+runtime delivery should use KAI when it needs to run out of process. The
+`v0.7.x` roadmap tracks a KSI gRPC/protobuf bridge so external substrate
+authors can receive the full `SubstrateClass`/typed-config envelope through the
+same plugin-gateway architecture.
+
 KSP and KAI are also different boundaries. KSP is spoke-side pull or outbound
 reconciliation inside the cluster controller. KAI is an external hub-side
 actuator plugin called by the Kapro controller.

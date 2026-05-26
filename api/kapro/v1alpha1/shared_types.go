@@ -167,13 +167,19 @@ type SubstrateObjectReference struct {
 // SubstrateBindingSpec selects a substrate-neutral execution profile for a
 // cluster or fleet. Substrate-specific resource names live in parameters and
 // are interpreted only by the selected substrate adapter.
+// +kubebuilder:validation:XValidation:rule="(has(self.ref) && self.ref != \"\") || (has(self.substrateRef) && self.substrateRef != \"\")",message="spec.substrate.ref is required"
+// +kubebuilder:validation:XValidation:rule="!((has(self.ref) && self.ref != \"\") && (has(self.substrateRef) && self.substrateRef != \"\")) || self.ref == self.substrateRef",message="spec.substrate.ref and deprecated spec.substrate.substrateRef must match when both are set"
 type SubstrateBindingSpec struct {
 	// Mode controls where substrate execution happens.
 	// +kubebuilder:default="pull"
 	Mode SubstrateMode `json:"mode"`
-	// SubstrateRef is the Substrate name. Built-in profiles commonly use
-	// "flux" or "argo"; external profiles may use any platform-defined name.
-	SubstrateRef string `json:"substrateRef"`
+	// Ref is the Substrate name. Built-in profiles commonly use "flux" or
+	// "argo"; external profiles may use any platform-defined name.
+	Ref string `json:"ref,omitempty"`
+	// SubstrateRef is the deprecated spelling of Ref.
+	// Deprecated: use ref.
+	// +optional
+	SubstrateRef string `json:"substrateRef,omitempty"`
 	// Staging declares optional pre-commit safety semantics for substrates that
 	// support staging. When omitted, existing substrate defaults are preserved.
 	// The built-in OCI pull substrate already uses TwoPhase/Abort behavior.
@@ -190,7 +196,29 @@ func (d *SubstrateBindingSpec) RegistryKey() string {
 	if d == nil {
 		return "/"
 	}
-	return string(d.Mode) + "/" + d.SubstrateRef
+	return string(d.Mode) + "/" + d.SubstrateName()
+}
+
+// SubstrateName returns the selected Substrate name, accepting the deprecated
+// substrateRef field for v0.6.x manifest compatibility.
+func (d *SubstrateBindingSpec) SubstrateName() string {
+	if d == nil {
+		return ""
+	}
+	if d.Ref != "" {
+		return d.Ref
+	}
+	return d.SubstrateRef
+}
+
+// SetSubstrateName writes the current public spelling used by generated
+// manifests.
+func (d *SubstrateBindingSpec) SetSubstrateName(name string) {
+	if d == nil {
+		return
+	}
+	d.Ref = name
+	d.SubstrateRef = ""
 }
 
 // Param returns a substrate-specific parameter with a default.

@@ -119,7 +119,7 @@ The recommended operating model is a dedicated hub-config Git repository. CI
 validates that repository and applies the rendered YAML to the Kapro hub with
 `kubectl apply`. Spoke clusters do not watch that repository directly; they
 either keep using their existing Argo or Flux source of truth, or they consume
-Kapro-generated greenfield delivery objects and report status through
+Kapro-generated delivery objects and report status through
 `Cluster`.
 
 Typical layout:

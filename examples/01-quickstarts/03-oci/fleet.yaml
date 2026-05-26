@@ -11,7 +11,7 @@ metadata:
 spec:
   substrate:
     mode: pull
-    substrateRef: oci
+    ref: oci
     parameters:
       repository: ghcr.io/example/checkout/{appKey}
       tag: "{version}"

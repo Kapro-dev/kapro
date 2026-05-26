@@ -38,7 +38,7 @@ type fluxDiscoverOptions struct {
 	Cache        bool
 	MaxFiles     int
 	MaxUnits     int
-	Take         bool
+	Adopt        bool
 	Force        bool
 }
 
@@ -120,12 +120,12 @@ func runFluxDiscover(opts fluxDiscoverOptions) error {
 		result.CacheStats = cache.Stats
 	}
 	files := map[string]string{
-		filepath.Join("substrates", opts.Name+discoverSubstrateFileSuffix(opts.Take)+".yaml"): renderFluxDiscoverSubstrate(opts, matchLabels),
-		filepath.Join("deliveryunits", opts.Name+".yaml"):                                     renderFluxDiscoverDeliveryUnit(opts, result),
-		filepath.Join("discovery", "flux-discovery.yaml"):                                     renderFluxDiscoveryReport(result),
-		filepath.Join("discovery", "kapro-git-map.yaml"):                                      renderFluxGitAdoptionMap(opts, result),
-		filepath.Join("discovery", "review-summary.yaml"):                                     renderDiscoveryReviewSummary("flux", opts.Name, result.RepoPath, result.SelectedUnits, result.SkippedObjects, result.Errors),
-		filepath.Join("README.md"):                                                            renderFluxDiscoverReadme(opts, result),
+		filepath.Join("substrates", opts.Name+discoverSubstrateFileSuffix(opts.Adopt)+".yaml"): renderFluxDiscoverSubstrate(opts, matchLabels),
+		filepath.Join("deliveryunits", opts.Name+".yaml"):                                      renderFluxDiscoverDeliveryUnit(opts, result),
+		filepath.Join("discovery", "flux-discovery.yaml"):                                      renderFluxDiscoveryReport(result),
+		filepath.Join("discovery", "kapro-git-map.yaml"):                                       renderFluxGitAdoptionMap(opts, result),
+		filepath.Join("discovery", "review-summary.yaml"):                                      renderDiscoveryReviewSummary("flux", opts.Name, result.RepoPath, result.SelectedUnits, result.SkippedObjects, result.Errors),
+		filepath.Join("README.md"):                                                             renderFluxDiscoverReadme(opts, result),
 	}
 	if err := writeScaffoldFiles(opts.OutPath, files, opts.Force); err != nil {
 		return err
@@ -497,28 +497,10 @@ func fluxUnitName(doc map[string]any, fallback string) string {
 
 func renderFluxDiscoverSubstrate(opts fluxDiscoverOptions, labels map[string]string) string {
 	managementPolicy := "Observe"
-	if opts.Take {
+	if opts.Adopt {
 		managementPolicy = "Adopt"
 	}
-	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha1
-kind: Substrate
-metadata:
-  name: %s
-spec:
-  substrate:
-    kind: flux
-    actuator: flux
-  execution:
-    mode: hub-push
-  parameters:
-    namespace: %s
-  discovery:
-    enabled: true
-    managementPolicy: %s
-    maxObjects: 1000
-    selector:
-      matchLabels:
-%s`, opts.Name, opts.Namespace, managementPolicy, renderYAMLMap(labels, 8))
+	return renderDiscoverSubstrate("flux", opts.Name, opts.Namespace, managementPolicy, labels)
 }
 
 func renderFluxDiscoverDeliveryUnit(opts fluxDiscoverOptions, result fluxDiscoveryResult) string {
@@ -602,9 +584,9 @@ units:
 func renderFluxDiscoverReadme(opts fluxDiscoverOptions, result fluxDiscoveryResult) string {
 	reviewInstruction := "before switching the Substrate from `Observe` to `Adopt`"
 	applyLead := "Apply observe mode first:"
-	if opts.Take {
+	if opts.Adopt {
 		reviewInstruction = "before running the Adopt-mode apply command below"
-		applyLead = "After review, apply adopt mode:"
+		applyLead = "After review, apply Adopt-mode resources:"
 	}
 	return fmt.Sprintf(`# Kapro Flux Discovery
 
@@ -629,5 +611,5 @@ kapro source apply --repo . --source deliveryunits/%s.yaml --set unit=revision
 Kapro discovered %d Flux objects and %d source mapping units. Flux remains the owner
 of source credentials, reconciliation, inventory, drift correction, and local
 rollout behavior.
-`, opts.Name, reviewInstruction, applyLead, opts.Name, discoverSubstrateFileSuffix(opts.Take), opts.Name, opts.Name, len(result.Objects), len(result.SelectedUnits))
+`, opts.Name, reviewInstruction, applyLead, opts.Name, discoverSubstrateFileSuffix(opts.Adopt), opts.Name, opts.Name, len(result.Objects), len(result.SelectedUnits))
 }

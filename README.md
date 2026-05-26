@@ -134,8 +134,8 @@ kapro import argo . --out ./kapro-connect --name checkout
 kapro import flux . --out ./kapro-connect --name checkout
 ```
 
-See the [Adoption Guide](docs/getting-started/adoption.md) for the greenfield
-and existing GitOps decision tree.
+See the [Adoption Guide](docs/getting-started/adoption.md) for the new-repo and
+existing GitOps decision tree.
 
 ## Local Hello World With Kind
 
