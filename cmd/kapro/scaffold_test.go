@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"sigs.k8s.io/yaml"
 )
 
 func TestRunInitScaffoldArgo(t *testing.T) {
@@ -478,6 +480,15 @@ func TestRunConnectScaffoldFlux(t *testing.T) {
 	} {
 		if !strings.Contains(content, want) {
 			t.Fatalf("missing %q in:\n%s", want, content)
+		}
+	}
+	if strings.Contains(content, "parameters:\n    namespace:") {
+		t.Fatalf("connect scaffold should keep namespace only on typed config, got:\n%s", content)
+	}
+	for _, doc := range strings.Split(content, "\n---\n") {
+		var object map[string]any
+		if err := yaml.Unmarshal([]byte(doc), &object); err != nil {
+			t.Fatalf("connect scaffold emitted invalid YAML document:\n%s\nerror: %v", doc, err)
 		}
 	}
 	for _, forbidden := range []string{

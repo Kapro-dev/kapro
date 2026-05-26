@@ -210,7 +210,6 @@ func importSubstrateObjects(opts importSubstrateOptions, substrateKind, manageme
 					ManagementPolicy: managementPolicy,
 					Selector:         &metav1.LabelSelector{MatchLabels: matchLabels},
 				},
-				Parameters: map[string]string{"namespace": opts.Namespace},
 			},
 		},
 		&kaprov1alpha1.SubstrateDiscoveryPolicy{

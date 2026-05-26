@@ -130,6 +130,51 @@ func TestSubstrateDiscoveryPolicyReconcilerRecordsDiscoveryResult(t *testing.T) 
 	}
 }
 
+func TestSubstrateDiscoveryPolicyReconcilerUsesTypedConfigNamespace(t *testing.T) {
+	ctx := context.Background()
+	config := typedSubstrateConfigWithSpecNamespace("flux.substrate.kapro.io/v1alpha1", "FluxSubstrateConfig", "checkout", "flux-managed")
+	c := adapterPolicyClient(t,
+		config,
+		&kaprov1alpha1.Substrate{
+			ObjectMeta: metav1.ObjectMeta{Name: "flux"},
+			Spec: kaprov1alpha1.SubstrateSpec{
+				ClassRef: &kaprov1alpha1.SubstrateClassReference{Name: "flux"},
+				ConfigRef: &kaprov1alpha1.SubstrateObjectReference{
+					APIVersion: "flux.substrate.kapro.io/v1alpha1",
+					Kind:       "FluxSubstrateConfig",
+					Name:       "checkout",
+				},
+				Execution:  &kaprov1alpha1.SubstrateExecutionSpec{Mode: kaprov1alpha1.ExecutionModeHubPush},
+				Discovery:  &kaprov1alpha1.SubstrateDiscoverySpec{Enabled: true},
+				Parameters: map[string]string{"namespace": "wrong-namespace"},
+			},
+		},
+		&kaprov1alpha1.SubstrateDiscoveryPolicy{
+			ObjectMeta: metav1.ObjectMeta{Name: "adopt-flux", Generation: 1},
+			Spec: kaprov1alpha1.SubstrateDiscoveryPolicySpec{
+				ExpectedKind: "flux",
+				SubstrateRef: "flux",
+				Selector:     &metav1.LabelSelector{MatchLabels: map[string]string{"team": "checkout"}},
+			},
+		},
+	)
+	reg := adapterPolicyTestRegistry(t, &fakeDiscoveryAdapter{
+		driver:  kaprov1alpha1.SubstrateKindFlux,
+		runtime: kaprov1alpha1.ExecutionScopeHub,
+		discover: func(_ context.Context, req kaproadapter.DiscoveryRequest) (kaproadapter.DiscoveryResult, error) {
+			if req.Namespace != "flux-managed" {
+				t.Fatalf("discovery namespace=%q, want typed config namespace", req.Namespace)
+			}
+			return kaproadapter.DiscoveryResult{Ready: true, Reason: "DiscoverySucceeded", Message: "ok"}, nil
+		},
+	})
+	r := &SubstrateDiscoveryPolicyReconciler{Client: c, AdapterRegistry: reg}
+
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Name: "adopt-flux"}}); err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+}
+
 func TestSubstrateDiscoveryPolicyReconcilerMirrorsSubstrateDiscoveryStatusWithoutPolicySelector(t *testing.T) {
 	ctx := context.Background()
 	c := adapterPolicyClient(t,

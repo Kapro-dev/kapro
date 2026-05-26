@@ -173,13 +173,7 @@ func (r *SubstrateReconciler) observeDiscovery(ctx context.Context, profile *kap
 	if profile.Spec.Discovery == nil || !profile.Spec.Discovery.Enabled {
 		return counts, "DiscoveryDisabled", "substrate discovery is disabled"
 	}
-	namespace := "argocd"
-	if profile.Spec.SubstrateKind() == string(kaprov1alpha1.SubstrateKindFlux) {
-		namespace = "flux-system"
-	}
-	if profile.Spec.Parameters["namespace"] != "" {
-		namespace = profile.Spec.Parameters["namespace"]
-	}
+	namespace := substrateDiscoveryNamespace(ctx, r.Client, profile)
 
 	switch profile.Spec.SubstrateKind() {
 	case string(kaprov1alpha1.SubstrateKindArgo):
@@ -659,6 +653,49 @@ func (r *SubstrateReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return b.Complete(r)
 }
 
+func substrateDiscoveryNamespace(ctx context.Context, c client.Client, profile *kaprov1alpha1.Substrate) string {
+	namespace := defaultSubstrateDiscoveryNamespace(profile)
+	if configNamespace := substrateConfigNamespace(ctx, c, profile); configNamespace != "" {
+		return configNamespace
+	}
+	if parameterNamespace := strings.TrimSpace(profile.Spec.Parameters["namespace"]); parameterNamespace != "" {
+		return parameterNamespace
+	}
+	return namespace
+}
+
+func defaultSubstrateDiscoveryNamespace(profile *kaprov1alpha1.Substrate) string {
+	switch profile.Spec.SubstrateKind() {
+	case string(kaprov1alpha1.SubstrateKindArgo):
+		return "argocd"
+	case string(kaprov1alpha1.SubstrateKindFlux):
+		return "flux-system"
+	default:
+		return ""
+	}
+}
+
+func substrateConfigNamespace(ctx context.Context, c client.Client, profile *kaprov1alpha1.Substrate) string {
+	if c == nil || profile.Spec.ConfigRef == nil {
+		return ""
+	}
+	ref := profile.Spec.ConfigRef
+	gv, err := schema.ParseGroupVersion(ref.APIVersion)
+	if err != nil {
+		return ""
+	}
+	config := &unstructured.Unstructured{}
+	config.SetGroupVersionKind(gv.WithKind(ref.Kind))
+	if err := c.Get(ctx, client.ObjectKey{Namespace: ref.Namespace, Name: ref.Name}, config); err != nil {
+		return ""
+	}
+	namespace, _, err := unstructured.NestedString(config.Object, "spec", "namespace")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(namespace)
+}
+
 func typedSubstrateConfigWatchKinds() []schema.GroupVersionKind {
 	return []schema.GroupVersionKind{
 		{Group: "argocd.substrate.kapro.io", Version: "v1alpha1", Kind: "ArgoCDSubstrateConfig"},
@@ -694,7 +731,7 @@ func (r *SubstrateReconciler) substrateProfilesForSubstrateObject(ctx context.Co
 	requests := make([]reconcile.Request, 0, len(profiles.Items))
 	for i := range profiles.Items {
 		profile := &profiles.Items[i]
-		if substrateProfileMatchesObject(profile, obj) {
+		if r.substrateProfileMatchesObject(ctx, profile, obj) {
 			requests = append(requests, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(profile)})
 		}
 	}
@@ -737,7 +774,7 @@ func (r *SubstrateReconciler) substrateProfilesForTypedConfig(ctx context.Contex
 	return requests
 }
 
-func substrateProfileMatchesObject(profile *kaprov1alpha1.Substrate, obj client.Object) bool {
+func (r *SubstrateReconciler) substrateProfileMatchesObject(ctx context.Context, profile *kaprov1alpha1.Substrate, obj client.Object) bool {
 	if profile.Spec.Discovery == nil || !profile.Spec.Discovery.Enabled {
 		return false
 	}
@@ -759,13 +796,7 @@ func substrateProfileMatchesObject(profile *kaprov1alpha1.Substrate, obj client.
 	if profile.Spec.SubstrateKind() != string(objectDriver) {
 		return false
 	}
-	namespace := "argocd"
-	if profile.Spec.SubstrateKind() == string(kaprov1alpha1.SubstrateKindFlux) {
-		namespace = "flux-system"
-	}
-	if profile.Spec.Parameters["namespace"] != "" {
-		namespace = profile.Spec.Parameters["namespace"]
-	}
+	namespace := substrateDiscoveryNamespace(ctx, r.Client, profile)
 	if obj.GetNamespace() != namespace {
 		return false
 	}

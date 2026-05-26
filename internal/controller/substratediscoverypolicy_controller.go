@@ -136,7 +136,7 @@ func (r *SubstrateDiscoveryPolicyReconciler) discover(ctx context.Context, polic
 	if !a.Capabilities().SupportsDiscover {
 		return adapterPolicyDiscoveryOutcome{reason: "DiscoveryUnsupported", message: fmt.Sprintf("substrate kind %s does not support discovery", substrate.Spec.SubstrateKind())}, nil
 	}
-	req, err := adapterPolicyDiscoveryRequest(&substrate, policy)
+	req, err := r.adapterPolicyDiscoveryRequest(ctx, &substrate, policy)
 	if err != nil {
 		return adapterPolicyDiscoveryOutcome{reason: "InvalidSelector", message: err.Error()}, nil
 	}
@@ -247,12 +247,12 @@ func adapterPolicySubstrateStatusObjects(substrate *kaprov1alpha1.Substrate) int
 	return substrate.Status.DiscoveredClusters + substrate.Status.DiscoveredApplications + substrate.Status.DiscoveredApplicationSets
 }
 
-func adapterPolicyDiscoveryRequest(substrate *kaprov1alpha1.Substrate, policy *kaprov1alpha1.SubstrateDiscoveryPolicy) (kaproadapter.DiscoveryRequest, error) {
+func (r *SubstrateDiscoveryPolicyReconciler) adapterPolicyDiscoveryRequest(ctx context.Context, substrate *kaprov1alpha1.Substrate, policy *kaprov1alpha1.SubstrateDiscoveryPolicy) (kaproadapter.DiscoveryRequest, error) {
 	req := kaproadapter.DiscoveryRequest{
 		Substrate:      substrate,
 		SubstrateKind:  kaprov1alpha1.SubstrateKind(substrate.Spec.SubstrateKind()),
 		ExecutionScope: substrateRuntimeForDiscovery(substrate.Spec.ExecutionMode()),
-		Namespace:      substrate.Spec.Parameters["namespace"],
+		Namespace:      substrateDiscoveryNamespace(ctx, r.Client, substrate),
 		Parameters:     substrate.Spec.Parameters,
 	}
 	if substrate.Spec.Discovery != nil {
