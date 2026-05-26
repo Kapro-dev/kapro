@@ -714,15 +714,13 @@ spec:
     name: %s
   execution:
     mode: hub-push
-  parameters:
-    namespace: %s
   discovery:
     enabled: true
     managementPolicy: %s
     maxObjects: 1000
     selector:
       matchLabels:
-%s`, substrate, family, ledger, substrate, apiVersion, configKind, name, namespace, name, substrate, apiVersion, configKind, name, namespace, managementPolicy, renderYAMLMap(labels, 8))
+%s`, substrate, family, ledger, substrate, apiVersion, configKind, name, namespace, name, substrate, apiVersion, configKind, name, managementPolicy, renderYAMLMap(labels, 8))
 }
 
 func substrateConfigKind(substrate string) (string, string) {

@@ -97,6 +97,9 @@ func TestImportSubstrateObjectsUseClassRefAndTypedConfig(t *testing.T) {
 		substrate.Spec.ConfigRef.Name != "checkout" {
 		t.Fatalf("configRef=%#v, want FluxSubstrateConfig checkout", substrate.Spec.ConfigRef)
 	}
+	if _, ok := substrate.Spec.Parameters["namespace"]; ok {
+		t.Fatalf("live import should keep namespace only on typed config, got parameters=%#v", substrate.Spec.Parameters)
+	}
 	if substrate.Spec.Discovery == nil ||
 		substrate.Spec.Discovery.ManagementPolicy != "Adopt" ||
 		substrate.Spec.Discovery.Selector == nil ||
