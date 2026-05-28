@@ -88,6 +88,7 @@ nav:
       - Custom Substrates: extending/custom-substrate.md
       - Adapters: extending/adapters.md
       - Adapter Capabilities: extending/adapter-capabilities.md
+      - PRI Reference Implementation: extending/pri-reference.md
       - Actuator Plugin Contract: extending/actuator-plugin-contract.md
       - Provider Plugin Contract: extending/provider-plugin-contract.md
       - Plugin Compatibility Policy: extending/plugin-compatibility-policy.md
