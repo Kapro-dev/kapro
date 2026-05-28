@@ -21,7 +21,9 @@ substrate:
 
 Operators can jump to `08-monitoring/`, `10-kind-demo/`, and `11-rbac/`.
 Extension authors should start with `05-plugins/`, then `06-sdk-go/`, then the
-minimal custom actuator in `07-actuator-hello-world/`.
+minimal custom actuator in `07-actuator-hello-world/`. Interoperability authors
+should use `12-pri-reference/` to learn the portable PRI record shape emitted by
+Kapro.
 
 ## Run This Example
 
@@ -146,6 +148,7 @@ oras push --plain-http localhost:5001/kapro/hello-world:v0.1.0 \
 | `09-archive/` | Long-term event archive sinks |
 | `10-kind-demo/` | Local demo environment assets |
 | `11-rbac/` | Recommended RBAC examples |
+| `12-pri-reference/` | OpenPromotions PRI validation and collector examples |
 
 ## Validate Locally
 

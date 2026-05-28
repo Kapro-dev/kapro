@@ -111,6 +111,7 @@ intent, gates, approvals, and audit traces across clusters.`,
 	root.AddCommand(newExplainCmd())
 	root.AddCommand(newReconstructCmd())
 	root.AddCommand(newVerifyCmd())
+	root.AddCommand(newPRICmd())
 	root.AddCommand(newDoctorCmd())
 	root.AddCommand(newMigrateCmd())
 	root.AddCommand(newApproveCmd())

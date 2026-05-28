@@ -97,6 +97,26 @@ decides when a version may advance across a fleet. See
 [ADR-0012: Competitive Positioning](docs/adr/0012-competitive-positioning.md)
 for the architectural comparison.
 
+## OpenPromotions PRI Reference
+
+Kapro can emit OpenPromotions PRI v0.1 records as a reference implementation.
+PRI is a portable promotion contract for Promotion, PromotionRun, TargetResult,
+and Evidence records. This makes Kapro output consumable by external pipelines,
+audit stores, dashboards, policy agents, or fleet systems without requiring
+those tools to import Kapro's Kubernetes APIs.
+
+```bash
+kapro pri validate examples/12-pri-reference/00-hello-world
+kapro pri profile
+kapro pri collect --promotionrun checkout-v1-2-3 --out ./pri-records
+```
+
+The collector is emission-mode: it reads Kapro runtime state and writes ordinary
+PRI YAML or JSON documents. It is not a new required wire protocol. See
+[Kapro PRI Reference Implementation](docs/extending/pri-reference.md) and
+[`examples/12-pri-reference/`](examples/12-pri-reference/) for the hello-world
+contract and collector workflow.
+
 ## Adapt To Your Fleet
 
 Kapro is substrate-neutral. A fleet can mix delivery styles by cluster:

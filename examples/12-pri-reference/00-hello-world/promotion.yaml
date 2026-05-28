@@ -1,0 +1,11 @@
+apiVersion: pri/v0.1
+kind: Promotion
+metadata:
+  name: hello-world
+spec:
+  unit: hello
+  artifacts:
+    - name: hello
+      version: v1.0.0
+  targets:
+    - name: dev

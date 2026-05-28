@@ -37,6 +37,7 @@ func TestExamplesTopLevelChaptersAreIndexed(t *testing.T) {
 		"09-archive",
 		"10-kind-demo",
 		"11-rbac",
+		"12-pri-reference",
 	}
 	if len(dirs) != len(want) {
 		t.Fatalf("top-level example chapters = %v, want %v", dirs, want)
